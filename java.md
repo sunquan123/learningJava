@@ -572,6 +572,130 @@ hashset使用contains确认某个元素是否在集合内部时使用了hashmap�
 - 锁是否分离： `ArrayBlockingQueue`中的锁是没有分离的，即生产和消费用的是同一个锁；`LinkedBlockingQueue`中的锁是分离的，即生产用的是`putLock`，消费是`takeLock`，这样可以防止生产者和消费者线程之间的锁争夺。
 - 内存占用：`ArrayBlockingQueue` 需要提前分配数组内存，而 `LinkedBlockingQueue` 则是动态分配链表节点内存。这意味着，`ArrayBlockingQueue` 在创建时就会占用一定的内存空间，且往往申请的内存比实际所用的内存更大，而`LinkedBlockingQueue` 则是根据元素的增加而逐渐占用内存空间。
 
+###### CopyOnWriteArrayList
+
+CopyOnWriteArrayList使用了COW(Copy on Write)的策略，保证读多写少的场景的性能。COW是指多个读线程读取数据时，是读取原数组的数据，不会加锁，读读并行。写线程修改数据(add、remove、update)时，对arraylist加锁，写写互斥。写数据时，调用系统方法将原数组拷贝一份，在拷贝数组上操作完毕后才将数组引用指向拷贝数组。
+
+优点：面对读多写少的场景，读读并行，性能较高，写线程不会影响读的性能。
+
+缺点：
+
+1. 每个写线程都需要拷贝数组，当数组占用内存较大时，写操作对内存的消耗也较大。
+
+2. 面对写多的场景会出现性能问题，每个写线程都因为需要加锁而阻塞，且写逻辑里会复制数组，再进行新增或替换操作，写操作的开销较大。
+
+3. 可能出现一段时间的数据不一致问题，写线程在将拷贝数组赋值给数组引用前，读线程读到的数据都是旧数据。如果读线程先读取了数组引用，写线程此时才将数组引用改成拷贝数组，这个读线程依然只能读到旧数据。
+
+add方法
+
+核心逻辑就是先对arraylist加锁，调用系统方法复制数组到拷贝数组中，再在数组末尾添加元素，最后将拷贝数组赋值给数组引用，最后finally中释放锁。
+
+由于CopyOnWriteArrayList的数组在每次add时直接从原数组复制一份拷贝数组，同时增加一格数组长度，所以内部数组每个位置都有元素，不像arraylist会存在空闲空间。
+
+remove方法
+
+核心逻辑就是先对arraylist加锁，调用系统方法复制数组到拷贝数组中，如果删除的是数组最后一个元素，那复制操作直接复制原数组元素到最后一个元素之前即可；如果不是最后一个元素，那复制原数组元素从0到指定下标之前的元素+指定下标之后的元素到数组末尾。最后将拷贝数组赋值给数组引用，最后finally中释放锁。
+
+get方法
+
+读取原数组引用，如果是根据下标找元素，直接返回指定下标的元素。
+
+contains方法
+
+for循环整个数组，对每个元素使用equals方法判断是否相等，找到则返回true。
+
+###### DelayQueue
+
+DelayQueue底层使用了PriorityQueue优先级队列作为任务的存放处，使用ReentantLock可重入锁锁住Queue保证多个线程竞争时的线程安全性。PriorityQueue使用了二叉小顶堆保证任务按照优先级进行排序。为了保证异步任务的定时执行，使用了Condition的await和signal方法完成多线程之间的等待与唤醒。
+
+应用场景一般是定时任务调度和缓存过期时间。定时任务调度的功能一般需要将任务加入到DelayQueue中，设置好剩余时间保证任务按顺序执行。缓存过期删除功能一般需要将缓存封装成一个task，设置好过期时间后， 由消费者定期删除指定缓存。
+
+DelayQueue的delay接口指定了获取剩余时间的方法getDelay方法需要生产者自己实现，并且需要重写compareTo方法用于比较各个任务谁的优先级较高。
+
+```java
+public class DelayedTask implements Delayed {
+  public long excuteTime;
+  private Runnable task;
+
+  public DelayedTask(long delay, Runnable task) {
+    this.excuteTime = System.currentTimeMillis() + delay;
+    this.task = task;
+  }
+
+  @Override
+  public long getDelay(TimeUnit unit) {
+    return unit.convert(excuteTime - System.currentTimeMillis(), TimeUnit.MILLISECONDS);
+  }
+
+  @Override
+  public int compareTo(Delayed o) {
+    return Long.compare(excuteTime, ((DelayedTask) o).excuteTime);
+  }
+
+  public void execute() {
+   task.run();
+  }
+}
+
+
+public class TestDelayQueue {
+  public static void main(String[] args) {
+    DelayQueue<DelayedTask> delayQueue = new DelayQueue();
+    delayQueue.add(
+        new DelayedTask(
+            2000,
+            () -> {
+              System.out.println("bb");
+            }));
+    delayQueue.add(
+        new DelayedTask(
+            1000,
+            () -> {
+              System.out.println("aa");
+            }));
+    delayQueue.add(
+        new DelayedTask(
+            3000,
+            () -> {
+              System.out.println("cc");
+            }));
+
+    for (int i = 0; i < delayQueue.size(); i++) {
+      System.out.println("start DelayedTask:" + i);
+      new Thread(
+              new Runnable() {
+                @Override
+                public void run() {
+                  if (!delayQueue.isEmpty()) {
+                    DelayedTask take = null;
+                    try {
+                      take = delayQueue.take();
+                    } catch (InterruptedException e) {
+                      throw new RuntimeException(e);
+                    }
+                    if (take != null) {
+                      take.execute();
+                    }
+                  }
+                }
+              })
+          .start();
+    }
+  }
+}
+```
+
+输出结果：
+
+```java
+start DelayedTask:0
+start DelayedTask:1
+start DelayedTask:2
+aa
+bb
+cc
+```
+
 ##### Map
 
 ###### hashmap
@@ -696,7 +820,7 @@ static class Segment<K,V> extends ReentrantLock implements Serializable {
 
 ![](./pic/java8_concurrenthashmap.png)
 
-JDK1.8 的 `ConcurrentHashMap` 不再是 **Segment 数组 + HashEntry 数组 + 链表**，而是 **Node 数组 + 链表 / 红黑树**。不过，Node 只能用于链表的情况，红黑树的情况需要使用 **`TreeNode`**。当冲突链表达到一定长度时，链表会转换成红黑树。
+JDK1.8 的 `ConcurrentHashMap` 不再是 **Segment 数组 + HashEntry 数组 + 链表**，而是 **Node 数组 + 链表 / 红黑树**。不过，Node 只能用于链表的情况，红黑树的情况需要使用 **`TreeNode`**。ConcurrentHashMap的链表转红黑树的判断条件也是和hashmap类似：只有数组长度大于64，且链表长度大于8才会开始树化。
 
 `TreeNode`是存储红黑树节点，被`TreeBin`包装。`TreeBin`通过`root`属性维护红黑树的根结点，因为红黑树在旋转的时候，根结点可能会被它原来的子节点替换掉，在这个时间点，如果有其他线程要写这棵红黑树就会发生线程不安全问题，所以在 `ConcurrentHashMap` 中`TreeBin`通过`waiter`属性维护当前使用这棵红黑树的线程，来防止其他线程的进入。
 
@@ -761,6 +885,191 @@ map.computeIfAbsent(key, k -> anotherValue);
 
 很多同学可能会说了，这种情况也能加锁同步呀！确实可以，但不建议使用加锁的同步机制，违背了使用 `ConcurrentHashMap` 的初衷。在使用 `ConcurrentHashMap` 的时候，尽量使用这些原子性的复合操作方法来保证原子性。
 
+###### JDK1.7下ConcurrentHashMap的put方法->ensureSegment方法->put方法赋值
+
+ensureSegment的功能是当segement数组此位置为空时，初始化一个segment对象到这个位置。核心逻辑是while循环判断这个位置没有对象，然后调用unsafe方法cas一次，尝试把segment放到这个位置上。
+
+###### JDK1.8下ConcurrentHashMap的put方法
+
+put方法是比较核心的业务逻辑方法，其主要思路就是：先进入循环，判断如果node数组没有初始化，就先进行初始化操作；接着判断node数组对应位置的node元素是否存在，如果不存在，就尝试cas赋值一次，成功就跳出循环；如果其他线程已经在这个位置放置元素了，就继续走下面逻辑。下面就是根据元素是链表还是红黑树分别进行操作：链表的情况下，一个一个往下判断，检查hash值、key值相同的元素，找到的话就替换对应的value值，直到找到链表尾部，如果还找不到，就新增一个尾部元素；如果是红黑树就直接调用红黑树的方法直接放元素进去。
+
+#### IO
+
+Java io流一般分为字符流和字节流，从输入角度又分为输入流和输出流。字节流包括InputStream、FileInputStream(读取文件操作)、BufferedInputStream(字节缓冲输入流，配合FileInputStream使用)、DataInputStream(读取一些基本数据类型数据)、ObjectInputStream(读取一些对象数据类型数据)。字符流包括Reader、InputStreamReader、FileReader(读取文件操作)、BufferedReader(字符缓冲输入流，配合FileReader使用)、Writer、OutputStreamWriter、FileWriter。
+
+###### 为什么要用字符流？
+
+当输入/输出内容是字符时，使用字符流更方便，默认字符流使用unicode编码，如果使用字节流直接读取中文字符，会出现乱码。utf8 :英文占 1 字节，中文占 3 字节，unicode：任何字符都占 2 个字节，gbk：英文占 1 字节，中文占 2 字节。
+
+###### 为什么会出现字节缓冲输入流/字节缓冲输出流？
+
+BufferedInputStream/BufferedOutputStream内部使用字节数组保存了一个字节的缓冲，使用输入流时，BufferedInputStream默认读取一部分输入内容到缓冲中，这样大幅减少了 IO 次数，当我们调用read方法时直接读取内存中的缓冲内容即可，比FileInputStream快一点。当使用int接收read方法时，使用BufferedInputStream性能较FileInputStream快很多，如果使用byte[]接收read方法时，BufferedInputStream性能提升就不会那么显著了。同理可以用在BufferedReader/BufferedWriter。
+
+###### 随机访问流
+
+RandomAccessFile的特点是可以设置从文件哪个字节偏移量开始写入内容。这个典型应用场景是大文件分片上传。write方法在写入对象的时候如果对应的位置已经有数据的话，会将其覆盖掉。断点续传也可以用到，上传时只需要从未上传的分片开始继续上传即可。seek(long pos)方法来设置文件指针的偏移量（距文件开头pos个字节处）。如果想要获取文件指针当前的位置的话，可以使用getFilePointer()方法。
+
+文件分片后，合并文件的代码如下：
+
+![](./pic/文件分片后合并.png)
+
+###### 适配器模式
+
+**适配器（Adapter Pattern）模式** 主要用于接口互不兼容的类的协调工作，你可以将其联想到我们日常经常使用的电源适配器。
+
+适配器模式中存在被适配的对象或者类称为 **适配者(Adaptee)** ，作用于适配者的对象或者类称为**适配器(Adapter)** 。适配器分为对象适配器和类适配器。类适配器使用继承关系来实现，对象适配器使用组合关系来实现。
+
+IO 流中的字符流和字节流的接口不同，它们之间可以协调工作就是基于适配器模式来做的，更准确点来说是对象适配器。通过适配器，我们可以将字节流对象适配成一个字符流对象，这样我们可以直接通过字节流对象来读取或者写入字符数据。
+
+`InputStreamReader` 和 `OutputStreamWriter` 就是两个适配器(Adapter)， 同时，它们两个也是字节流和字符流之间的桥梁。`InputStreamReader` 使用 `StreamDecoder` （流解码器）对字节进行解码，**实现字节流到字符流的转换，** `OutputStreamWriter` 使用`StreamEncoder`（流编码器）对字符进行编码，实现字符流到字节流的转换。
+
+###### 观察者模式
+
+NIO 中的文件目录监听服务使用到了观察者模式。
+
+NIO 中的文件目录监听服务基于 `WatchService` 接口和 `Watchable` 接口。`WatchService` 属于观察者，`Watchable` 属于被观察者。
+
+`Watchable` 接口定义了一个用于将对象注册到 `WatchService`（监控服务） 并绑定监听事件的方法 `register` 。
+
+```java
+public interface Path
+    extends Comparable<Path>, Iterable<Path>, Watchable{
+}
+
+public interface Watchable {
+    WatchKey register(WatchService watcher,
+                      WatchEvent.Kind<?>[] events,
+                      WatchEvent.Modifier... modifiers)
+        throws IOException;
+}
+```
+
+`WatchService` 用于监听文件目录的变化，同一个 `WatchService` 对象能够监听多个文件目录。
+
+```java
+// 创建 WatchService 对象
+WatchService watchService = FileSystems.getDefault().newWatchService();
+
+// 初始化一个被监控文件夹的 Path 类:
+Path path = Paths.get("workingDirectory");
+// 将这个 path 对象注册到 WatchService（监控服务） 中去
+WatchKey watchKey = path.register(
+watchService, StandardWatchEventKinds...);
+```
+
+`Path` 类 `register` 方法的第二个参数 `events` （需要监听的事件）为可变长参数，也就是说我们可以同时监听多种事件。
+
+```java
+WatchKey register(WatchService watcher,
+                  WatchEvent.Kind<?>... events)
+    throws IOException;
+```
+
+常用的监听事件有 3 种：
+
+- `StandardWatchEventKinds.ENTRY_CREATE`：文件创建。
+- `StandardWatchEventKinds.ENTRY_DELETE` : 文件删除。
+- `StandardWatchEventKinds.ENTRY_MODIFY` : 文件修改。
+
+`register` 方法返回 `WatchKey` 对象，通过`WatchKey` 对象可以获取事件的具体信息比如文件目录下是创建、删除还是修改了文件、创建、删除或者修改的文件的具体名称是什么。
+
+```java
+WatchKey key;
+while ((key = watchService.take()) != null) {
+    for (WatchEvent<?> event : key.pollEvents()) {
+      // 可以调用 WatchEvent 对象的方法做一些事情比如输出事件的具体上下文信息
+    }
+    key.reset();
+}
+```
+
+`WatchService` 内部是通过一个 daemon thread（守护线程）采用定期轮询的方式来检测文件的变化，简化后的源码如下所示。
+
+```java
+class PollingWatchService
+    extends AbstractWatchService
+{
+    // 定义一个 daemon thread（守护线程）轮询检测文件变化
+    private final ScheduledExecutorService scheduledExecutor;
+
+    PollingWatchService() {
+        scheduledExecutor = Executors
+            .newSingleThreadScheduledExecutor(new ThreadFactory() {
+                 @Override
+                 public Thread newThread(Runnable r) {
+                     Thread t = new Thread(r);
+                     t.setDaemon(true);
+                     return t;
+                 }});
+    }
+
+  void enable(Set<? extends WatchEvent.Kind<?>> events, long period) {
+    synchronized (this) {
+      // 更新监听事件
+      this.events = events;
+
+        // 开启定期轮询
+      Runnable thunk = new Runnable() { public void run() { poll(); }};
+      this.poller = scheduledExecutor
+        .scheduleAtFixedRate(thunk, period, period, TimeUnit.SECONDS);
+    }
+  }
+}
+```
+
+##### io模型
+
+UNIX 系统下， IO 模型一共有 5 种：**同步阻塞 I/O**、**同步非阻塞 I/O**、**I/O 多路复用**、**信号驱动 I/O** 和**异步 I/O**。
+
+###### BIO (Blocking I/O)
+
+**BIO 属于同步阻塞 I/O 模型** 。
+
+同步阻塞 IO 模型中，应用程序主动发起 read 调用后，会一直阻塞，直到内核把数据拷贝到用户空间。
+
+![](./pic/bio.png)
+
+在客户端连接数量不高的情况下，是没问题的。但是，当面对十万甚至百万级连接的时候，传统的 BIO 模型是无能为力的。因此，我们需要一种更高效的 I/O 处理模型来应对更高的并发量。
+
+###### 同步非阻塞 I/O
+
+![](./pic/nio.png)
+
+在同步非阻塞I/O模型中，应用程序先发起read系统调用，此时系统会检查数据是否缓冲完成，如果没有，则直接返回。此后应用程序隔段时间就会发起一次read系统调用，系统都会返回，直到数据已经缓冲到内核缓冲区。此时应用程序发起read系统调用时，内核将开始拷贝内核缓冲区中的数据到应用程序内存中，直到数据拷贝完成，这个时候内核会返回给应用程序，应用程序开始处理数据。在拷贝期间，应用程序处于阻塞状态。可以看出，同步非阻塞I/O模型相对于阻塞模型来说，准备数据和数据拷贝到到内核缓冲区的过程都是非阻塞的，应用程序的调用都是立即返回的。直到内核开始从内核缓冲区中拷贝数据到应用程序内存中的时期，才会使应用程序处于阻塞状态。
+
+但是，这种 IO 模型同样存在问题：**应用程序不断进行 I/O 系统调用轮询数据是否已经准备好的过程是十分消耗 CPU 资源的。**
+
+###### I/O 多路复用
+
+![](./pic/io多路复用.png)
+
+I/O 多路复用模型中，线程首先发起 select 调用，询问内核查询的多个套接字是否准备好数据了，此时一直处于阻塞状态，等到某一个套接字数据准备好了，内核才会返回结果，此时用户线程再发起 read 调用。read 调用的过程（数据从内核空间 -> 用户空间）还是阻塞的。
+
+> 目前支持 IO 多路复用的系统调用，有 select，epoll 等等。select 系统调用，目前几乎在所有的操作系统上都有支持。
+> 
+> - **select 调用**：内核提供的系统调用，它支持一次查询多个系统调用的可用状态。几乎所有的操作系统都支持。
+> - **epoll 调用**：linux 2.6 内核，属于 select 调用的增强版本，优化了 IO 的执行效率。
+
+IO 多路复用模型，相对于阻塞I/O模型，似乎不显出什么优势，但是当select调用查询多个套接字时，将比单个调用的BIO方便不少，系统性能也会得到提升，cpu资源消耗相对更小。
+
+Java 中的 NIO ，有一个非常重要的**选择器 ( Selector )** 的概念，也可以被称为 **多路复用器**。通过它，只需要一个线程便可以管理多个客户端连接。当客户端数据到了之后，才会为其服务。
+
+![](./pic/javanio.png)
+
+###### 信号驱动 I/O
+
+![](./pic/sigio.jpg)
+
+这个模型似乎未出现在java中，还是一个底层的系统模型。这个模型主要是应用程序先发起一个sigaction系统调用，产生一个信号处理程序，此时内核会立即返回。直到内核中数据准备好，数据拷贝到内核缓冲区中，此后内核会按照约定递交sigio信号，应用程序接收到后会按照自己产生的信号处理程序继续发起recv_from系统调用，此时内核将内核缓冲区的数据复制到应用程序内存中，完成后返回。可以看出这个模型在数据准备阶段不需要阻塞，也不会出现频繁系统调用产生的系统资源浪费，全部流程基于约定的信号和数据处理程序，只是最后的内核缓冲区数据拷贝到应用程序内存中这个时期应用程序还是处于阻塞状态。
+
+###### 异步 I/O（AIO）
+
+![](./pic/aio.png)
+
+异步I/O模型是应用程序发起aio_read系统调用，内核检查数据未准备好，则直接返回。直到内核接收到数据且在内核缓冲区准备好数据，且内核按照约定将内核缓冲区的数据拷贝到应用程序内存中指定位置，此后内核会按照约定通知应用程序。此时应用程序可以开始处理数据。在此期间，应用程序未处于阻塞状态。
+
+Java 7 中引入了 NIO 的改进版 NIO 2,它是异步 IO 模型。目前来说 AIO 的应用还不是很广泛。Netty 之前也尝试使用过 AIO，不过又放弃了。这是因为，Netty 使用了 AIO 之后，在 Linux 系统上的性能并没有多少提升。 
+
 #### 并发编程
 
 MESI：volatile修饰的变量会在线程的工作内存修改了之后，通过总线嗅探机制同步给主内存和其他线程的工作内存，这是计算机实现的机制。同时，volatile修饰的变量在修改的地方，前后代码行会加上内存屏障，防止指令重排序。其实底层是jvm使用了汇编的lock指令加在变量赋值前后。
@@ -784,6 +1093,8 @@ ThreadLocal保证各个线程间数据安全，每个线程的数据不会被另
 CopyOnWriteArrayList适用于写少读多的并发场景
 
 ReadWriteLock即为读写锁，他要求写与写之间互斥，读与写之间互斥，    读与读之间可以并发执行。在读多写少的情况下可以提高效率
+
+###### Synchronized 的锁升级
 
 #### JVM
 
@@ -822,3 +1133,15 @@ heap space分为年轻代和年老代， 年老代常见的内存溢出原因有
 - [java提高篇(八)----详解内部类 - chenssy - 博客园](https://www.cnblogs.com/chenssy/p/3388487.html)
 
 - [Java提高篇——静态代码块、构造代码块、构造函数以及Java类初始化顺序 - 萌小Q - 博客园](https://www.cnblogs.com/Qian123/p/5713440.html)
+
+- 《深入拆解 Tomcat & Jetty》
+
+- 如何完成一次 IO：https://llc687.top/126.html
+
+- 程序员应该这样理解 IO：[程序员应该这样理解IO - 简书](https://www.jianshu.com/p/fa7bdc4f3de7)
+
+- 10 分钟看懂， Java NIO 底层原理：[10分钟看懂， Java NIO 底层原理 - 疯狂创客圈 - 博客园](https://www.cnblogs.com/crazymakercircle/p/10225159.html)
+
+- IO 模型知多少 | 理论篇：[IO 模型知多少 | 理论篇 - 「圣杰」 - 博客园](https://www.cnblogs.com/sheng-jie/p/how-much-you-know-about-io-models.html)
+
+- 《UNIX 网络编程 卷 1；套接字联网 API 》6.2 节 IO 模型

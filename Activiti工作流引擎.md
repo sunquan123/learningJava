@@ -681,6 +681,6 @@ public void deleteDeployment() {
 
 - [https://andyoung.blog.csdn.net/article/details/118345330](https://andyoung.blog.csdn.net/article/details/118345330)
 
-工作流引擎 Activiti 与 Spring boot 结合会是开发跟简单，不如来看下
+工作流引擎 Activiti 与 Spring boot 结合会使开发更简单，不如来看下
 
 - [https://andyoung.blog.csdn.net/](https://andyoung.blog.csdn.net/)

@@ -396,17 +396,17 @@ public class ActivitiDemo {
      */
     @Test
     public void testDeployment(){
-//        1、创建ProcessEngine
+        // 1、创建ProcessEngine
         ProcessEngine processEngine = ProcessEngines.getDefaultProcessEngine();
-//        2、得到RepositoryService实例
+        // 2、得到RepositoryService实例
         RepositoryService repositoryService = processEngine.getRepositoryService();
-//        3、使用RepositoryService进行部署
+        // 3、使用RepositoryService进行部署
         Deployment deployment = repositoryService.createDeployment()
                 .addClasspathResource("bpmn/evection.bpmn") // 添加bpmn资源
                 .addClasspathResource("bpmn/evection.png")  // 添加png资源
                 .name("出差申请流程")
                 .deploy();
-//        4、输出部署信息
+        // 4、输出部署信息
         System.out.println("流程部署id：" + deployment.getId());
         System.out.println("流程部署名称：" + deployment.getName());
     }
@@ -453,6 +453,97 @@ SELECT * FROM act_ge_bytearray #资源表
 
 建议：一次部署一个流程，这样部署表和流程定义表是一对一有关系，方便读取流程部署及流程定义信息。
 
+#### 项目实战（模型定义+流程部署）
+
+##### 模型定义
+
+生成模型并设置到activiti表中
+
+```java
+public void createModel(Map<String, Object> paramMap){
+         // 1、创建ProcessEngine
+        ProcessEngine processEngine = ProcessEngines.getDefaultProcessEngine();
+        // 2、得到RepositoryService实例
+        RepositoryService repositoryService = processEngine.getRepositoryService();
+        Model model = repositoryService.newModel();
+        ObjectNode modelNode = objectMapper.createObjectNode();
+        modelNode.put(ModelDataJsonConstants.MODEL_NAME, paramMap.get("name").toString());
+        String description = StringUtils.defaultString(paramMap.get("description").toString());
+        modelNode.put(ModelDataJsonConstants.MODEL_DESCRIPTION, description);
+        modelNode.put(ModelDataJsonConstants.MODEL_REVISION, 1);
+        model.setName(paramMap.get("name").toString());
+        model.setKey(StringUtils.defaultString(paramMap.get("key").toString()));
+        model.setMetaInfo(modelNode.toString());
+        model.setCategory(paramMap.get("category").toString());
+        // 存入表act_re_model
+        repositoryService.saveModel(model);
+
+        // 创建模型时完善ModelEditorSource，这里是对画布的相关设置
+        ObjectNode editorNode = objectMapper.createObjectNode();
+        editorNode.put("id", "canvas");
+        editorNode.put("resourceId", "canvas");
+        ObjectNode stencilSetNode = objectMapper.createObjectNode();
+        stencilSetNode.put("namespace","http://b3mn.org/stencilset/bpmn2.0#");
+        editorNode.put("stencilset", stencilSetNode);
+        ObjectNode properties = objectMapper.createObjectNode();
+        properties.put("process_author", "sys");
+        editorNode.put("properties", properties);
+        try {
+            // 存入表act_ge_bytearray 空画布信息，关联上act_re_model表的editorsource字段
+            repositoryService.addModelEditorSource(model.getId(),editorNode.toString().getBytes("utf-8"));
+        } catch (Exception e) {
+            throw new ActivitiException("创建模型时完善ModelEditorSource服务异常：{}",e);
+        }
+    }
+```
+
+##### 流程部署
+
+将模型部署成流程，用于将固定下来的模型进行部署
+
+```java
+public AjaxResult deployModel(Map<String, Object> paramMap) {
+        try {
+             // 1、创建ProcessEngine
+            ProcessEngine processEngine = ProcessEngines.getDefaultProcessEngine();
+            // 2、得到RepositoryService实例
+            RepositoryService repositoryService = processEngine.getRepositoryService();
+            org.activiti.engine.repository.Model modelData = repositoryService.getModel(paramMap.get("id").toString());
+            BpmnJsonConverter jsonConverter = new BpmnJsonConverter();
+            JsonNode editorNode = new ObjectMapper().readTree(repositoryService.getModelEditorSource(modelData.getId()));
+            BpmnModel bpmnModel = jsonConverter.convertToBpmnModel(editorNode);
+            BpmnXMLConverter xmlConverter = new BpmnXMLConverter();
+            byte[] bpmnBytes = xmlConverter.convertToXML(bpmnModel);
+
+            String processName = modelData.getName();
+            if (!StringUtils.endsWith(processName, ".bpmn20.xml")) {
+                processName += ".bpmn20.xml";
+            }
+            ByteArrayInputStream in = new ByteArrayInputStream(bpmnBytes);
+            // 在act_re_deployment、在act_re_procdef表中增加记录
+            //  在act_ge_bytearray中增加bpmn和png记录
+            Deployment deployment = repositoryService.createDeployment().name(modelData.getName()).addInputStream(processName, in).deploy();
+
+            // 在act_re_procdef表中修改分类字段，设置流程分类
+            List<ProcessDefinition> list = repositoryService.createProcessDefinitionQuery().deploymentId(deployment.getId()).list();
+            for (ProcessDefinition processDefinition : list) {
+                repositoryService.setProcessDefinitionCategory(processDefinition.getId(), modelData.getCategory());
+            }
+            if (CollectionUtils.isEmpty(list)) {
+                return AjaxResult.error("部署失败，没有流程。");
+            }
+            return AjaxResult.success("部署成功");
+        } catch (Exception e) {
+            LOGGER.error("设计模型图不正确，请检查模型正确性，模型ID=" + paramMap.get("id").toString());
+            throw new ActivitiException("设计模型图不正确，请检查模型正确性，模型ID=" + paramMap.get("id").toString(), e);
+        }
+    }
+```
+
+##### 操作数据表
+
+这里数据表的变化同上单个文件部署方式
+
 ### 启动流程实例
 
 流程定义部署在activiti后就可以通过工作流管理业务流程了，也就是说上边部署的出差申请流程可以使用了。
@@ -467,14 +558,21 @@ SELECT * FROM act_ge_bytearray #资源表
      */
     @Test
     public void testStartProcess(){
-//        1、创建ProcessEngine
+        // 1、创建ProcessEngine
         ProcessEngine processEngine = ProcessEngines.getDefaultProcessEngine();
-//        2、获取RunTimeService
+        // 2、获取RunTimeService
         RuntimeService runtimeService = processEngine.getRuntimeService();
-//        3、根据流程定义Id启动流程
-        ProcessInstance processInstance = runtimeService
-                .startProcessInstanceByKey("myEvection");
-//        输出内容
+        String procDefKey = "leave";
+        String businessTable = "oa_leave";
+        String businessId = "44b653708c264242b9149394ee579f94";
+        Map<String, Object> vars = Maps.newHashMap();
+        // 设置流程标题
+        vars.put("title", "");
+        // 3、根据流程定义key、实例id、流程参数启动流程
+        ProcessInstance procIns =
+        runtimeService.startProcessInstanceByKey(
+            procDefKey, businessTable + ":" + businessId, vars);
+        // 输出内容
         System.out.println("流程定义id：" + processInstance.getProcessDefinitionId());
         System.out.println("流程实例id：" + processInstance.getId());
         System.out.println("当前活动Id：" + processInstance.getActivityId());
@@ -484,7 +582,7 @@ SELECT * FROM act_ge_bytearray #资源表
 输出结果如下：
 
 ```text
-流程定义id：myEvection:1:4
+流程定义id：leave:1:2518
 流程实例id：2501
 当前活动Id：null
 ```
@@ -545,22 +643,22 @@ SELECT * FROM act_ge_bytearray #资源表
 任务负责人查询待办任务，选择任务进行处理，完成任务。
 
 ```java
-// 完成任务
+    // 完成任务
     @Test
     public void completTask(){
-//        获取引擎
+        // 获取引擎
         ProcessEngine processEngine = ProcessEngines.getDefaultProcessEngine();
-//        获取taskService
+        // 获取taskService
         TaskService taskService = processEngine.getTaskService();
 
-//        根据流程key 和 任务的负责人 查询任务
-//        返回一个任务对象
+        // 根据流程key 和 任务的负责人 查询任务
+        // 返回一个任务对象
         Task task = taskService.createTaskQuery()
-                .processDefinitionKey("myEvection") //流程Key
+                .processDefinitionKey("leave") //流程Key
                 .taskAssignee("zhangsan")  //要查询的负责人
                 .singleResult();
 
-//        完成任务,参数：任务id
+        // 完成任务,参数：任务id
         taskService.complete(task.getId());
     }
 ```
@@ -605,9 +703,9 @@ SELECT * FROM act_ge_bytearray #资源表
 输出结果：
 
 ```text
-流程定义id：myEvection:1:4
+流程定义id：leave:1:4
 流程定义名称：出差申请单
-流程定义key：myEvection
+流程定义key：leave
 流程定义版本：1
 ```
 
@@ -638,7 +736,7 @@ public void deleteDeployment() {
 
 先删除没有完成流程节点，最后就可以完全删除流程定义信息
 
-项目开发中级联删除操作一般只开放给超级管理员使用.
+项目开发中级联删除操作一般只开放给超级管理员使用。
 
 ### 流程历史信息的查看
 
@@ -673,6 +771,53 @@ public void deleteDeployment() {
             System.out.println("<==========================>");
         }
     }
+```
+
+### 踩坑
+
+activiti在流程图中可以设置外联表单，即用act_ru_task的form_key字段存储一个http链接或者其他，如果在开始事件/互斥网关等节点中设置了，可以在流程实例的执行中随时得到当前节点的外联表单配置地址，从而指定当前节点查看的表单页面。或者从该流程实例的开始事件中也能查到外联表单。
+
+activiti流程图中每个节点都可以设置主键，即用act_ru_task的task_def_key可以知道当前节点是什么节点，从而做对应的处理。
+
+### Activiti常用API
+
+这里列举一下日常开发过程中经常使用的API：
+
+```java
+// 查询模型列表
+repositoryService.createModelQuery();
+// 根据id查询流程定义act_re_procdef表
+repositoryService.createProcessDefinitionQuery()
+.processDefinitionId(processId);
+// 根据流程定义id查询流程对应的bpmn图
+repositoryService.getResourceAsStream(deploymentId,resourceName);
+// 根据流程部署id，删除流程定义（级联删除，不管流程是否启动，都能可以删除）
+repositoryService.deleteDeployment(deploymentId, true);
+// 根据流程部署id，查询流程部署act_re_deployment表，例如部署时间
+repositoryService.createDeploymentQuery().deploymentId(deploymentId);
+// 根据流程实例id或者流程定义key查询所有的流程实例
+runtimeService.createProcessInstanceQuery()
+.processInstanceId(processInstanceId).processDefinitionKey(procDefKey);
+// 根据流程实例ID 删除流程实例
+runtimeService.deleteProcessInstance(processInstanceId, "删除流程");
+// 根据流程定义key、流程实例唯一标识、输入参数开启一个流程实例
+runtimeService.startProcessInstanceByKey(procDefKey, businessId, vars);
+// 根据流程定义id激活该流程
+repositoryService.activateProcessDefinitionById(procDefId, true, null);
+// 根据流程定义id挂起该流程
+repositoryService.suspendProcessDefinitionById(procDefId, true, null);
+// 根据任务id删除任务（某个流程实例中的事件）
+taskService.deleteTask(taskId, "删除任务");
+// 根据流程定义id和任务key获取到当前任务的外联表单字段
+formService.getTaskFormKey(procDefId, taskDefKey);
+// 根据委派人/候选人查询用户下的所有任务
+taskService.createTaskQuery().taskAssignee(userName)
+.taskCandidateUser(userName);
+// 根据任务id完成该任务：通过/未通过（某个流程实例中的事件）
+taskService.complete(taskId, vars);
+// 根据流程实例id查询该实例的流转历史列表
+historyService.createHistoricProcessInstanceQuery()
+.processInstanceId(procInsId);
 ```
 
 ## 结尾

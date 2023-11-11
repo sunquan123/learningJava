@@ -1,4 +1,420 @@
-redis五种数据结构
+# Redis学习手册
+
+## 如何集成Redis到Spring Boot中？
+
+### 添加redis所需依赖：
+
+```xml
+<!-- redis 缓存操作 -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-redis</artifactId>
+    <version>2.5.15</version>
+</dependency>
+<!-- 阿里JSON解析器 -->
+<dependency>
+    <groupId>com.alibaba.fastjson2</groupId>
+    <artifactId>fastjson2</artifactId>
+    <version>2.0.25</version>
+</dependency>
+<dependency>
+    <groupId>org.apache.commons</groupId>
+    <artifactId>commons-pool2</artifactId>
+    <version>2.9.0</version>
+</dependency>
+```
+
+### 添加配置
+
+常规配置如下： 在application.yml配置文件中配置 redis的连接信息
+
+```yaml
+spring:
+  redis:
+    host: 127.0.0.1
+    port: 6379
+    password:
+    database: 0
+    lettuce:
+      pool:
+        max-idle: 16
+        max-active: 32
+        min-idle: 8
+```
+
+### 配置类
+
+```java
+@Configuration
+public class RedisConfig {
+  @Bean
+  public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory factory) {
+    RedisTemplate<String, Object> redisTemplate = new RedisTemplate<String, Object>();
+    redisTemplate.setConnectionFactory(factory);
+    StringRedisSerializer stringRedisSerializer = new StringRedisSerializer();
+
+    FastJson2JsonRedisSerializer fastJson2JsonRedisSerializer =
+        new FastJson2JsonRedisSerializer(Object.class);
+
+    // 设置key和value的序列化规则
+    redisTemplate.setKeySerializer(stringRedisSerializer); // key的序列化类型
+    redisTemplate.setValueSerializer(fastJson2JsonRedisSerializer); // value的序列化类型
+    redisTemplate.setHashKeySerializer(stringRedisSerializer);
+    redisTemplate.setHashValueSerializer(fastJson2JsonRedisSerializer);
+    redisTemplate.afterPropertiesSet();
+
+    return redisTemplate;
+  }
+}
+```
+
+```java
+public class FastJson2JsonRedisSerializer<T> implements RedisSerializer<T>
+{
+    public static final Charset DEFAULT_CHARSET = Charset.forName("UTF-8");
+
+    private Class<T> clazz;
+
+    public FastJson2JsonRedisSerializer(Class<T> clazz)
+    {
+        super();
+        this.clazz = clazz;
+    }
+
+    @Override
+    public byte[] serialize(T t) throws SerializationException
+    {
+        if (t == null)
+        {
+            return new byte[0];
+        }
+        return JSON.toJSONString(t, JSONWriter.Feature.WriteClassName).getBytes(DEFAULT_CHARSET);
+    }
+
+    @Override
+    public T deserialize(byte[] bytes) throws SerializationException
+    {
+        if (bytes == null || bytes.length <= 0)
+        {
+            return null;
+        }
+        String str = new String(bytes, DEFAULT_CHARSET);
+
+        return JSON.parseObject(str, clazz, JSONReader.Feature.SupportAutoType);
+    }
+}
+```
+
+### 项目中使用
+
+```java
+@Component
+public class CacheUtils {
+  private static Logger logger = LoggerFactory.getLogger(CacheUtils.class);
+  @Autowired public RedisTemplate redisTemplate;
+  private static final String SYS_CACHE = "sys-cache";
+
+
+  /**
+   * 获取缓存
+   *
+   * @param cacheName
+   * @param key
+   * @return
+   */
+  public Object get(String cacheName, String key) {
+    //    return getCache(cacheName).get(getKey(key));
+    return redisTemplate.opsForHash().get(cacheName, getKey(key));
+  }
+
+
+  /**
+   * 写入缓存
+   *
+   * @param cacheName
+   * @param key
+   * @param value
+   */
+  public void put(String cacheName, String key, Object value) {
+    redisTemplate.opsForHash().put(cacheName, getKey(key), value);
+  }
+
+  /**
+   * 从缓存中移除
+   *
+   * @param cacheName
+   * @param key
+   */
+  public void remove(String cacheName, String key) {
+    redisTemplate.opsForHash().delete(cacheName, getKey(key));
+  }
+
+  /**
+   * 从缓存中移除所有
+   *
+   * @param cacheName
+   */
+  public void removeAll(String cacheName) {
+    Set<String> keys = redisTemplate.opsForHash().keys(cacheName);
+    for (String key : keys) {
+      redisTemplate.opsForHash().delete(cacheName, key);
+    }
+    logger.info("清理缓存： {} => {}", cacheName, keys);
+  }
+}
+```
+
+### 如何在单元测试中使用Redis？
+
+重点解决的问题是无法自动注入RedisTemplate，所以手动初始化RedisTemplate，中间需要初始化LettuceConnectionFactory工厂类，设置好redis服务器的地址和密码等参数。重点需要执行connectionFactory.afterPropertiesSet()方法，保证工厂能正常初始化成功。
+
+```java
+@SpringBootTest(classes = CacheUtilsTest.class)
+class CacheUtilsTest {
+  private static Logger logger = LoggerFactory.getLogger(CacheUtilsTest.class);
+  private static RedisTemplate<String, Object> redisTemplate;
+
+  @BeforeAll
+  static void startRedis() {
+    redisTemplate = new RedisTemplate<String, Object>();
+    RedisStandaloneConfiguration redisStandaloneConfiguration = new RedisStandaloneConfiguration("192.168.56.100", 6379);
+    redisStandaloneConfiguration.setDatabase(0);
+    redisStandaloneConfiguration.setPassword("123456");
+    LettuceConnectionFactory connectionFactory = new LettuceConnectionFactory(redisStandaloneConfiguration);
+    connectionFactory.afterPropertiesSet();
+    redisTemplate.setConnectionFactory(connectionFactory);
+    StringRedisSerializer stringRedisSerializer = new StringRedisSerializer();
+
+    FastJson2JsonRedisSerializer fastJson2JsonRedisSerializer =
+            new FastJson2JsonRedisSerializer(Object.class);
+
+    // 设置key和value的序列化规则
+    redisTemplate.setKeySerializer(stringRedisSerializer); // key的序列化类型
+    redisTemplate.setValueSerializer(fastJson2JsonRedisSerializer); // value的序列化类型
+    redisTemplate.setHashKeySerializer(stringRedisSerializer);
+    redisTemplate.setHashValueSerializer(fastJson2JsonRedisSerializer);
+    redisTemplate.afterPropertiesSet();
+  }
+
+  @Test
+  void testGetCacheNames() {
+    String pattern = "zhglxt";
+    redisTemplate.opsForHash().put("zhglxt-sys-config","sys_config:sys.index.skinName","skin-purple");
+    Set<String> keys = new HashSet<>();
+    // 获取redis全部key
+    Set<String> hashKetSet = redisTemplate.keys("*");
+    logger.info("getCacheNames:{}", hashKetSet);
+    for (Object s : hashKetSet) {
+      String ss = (String) s;
+      if (ss.startsWith(pattern)) {
+        keys.add(ss);
+      }
+    }
+    logger.info("getCacheNames end:{}", keys);
+  }
+}
+```
+
+TODO：可以使用embeded-redis进行单元测试环境下模拟redis的测试方式
+
+## redis常用命令
+
+```shell
+# 登录时指定ip、端口、密码
+redis-cli -h 127.0.0.1 -p 6379 -a 123456
+# 登录后也可以指定密码
+auth 123456
+# 查询全部key
+keys *
+# 查看key是什么类型的数据
+type key
+# 查看key的剩余生存时间
+ttl key
+
+
+```
+
+### Redis五种数据结构
+
+#### string
+
+##### 常用命令
+
+```shell
+# O(1)复杂度 有值则覆盖，无值则新建
+set key val
+# O(1)复杂度 删除某个key
+del key
+# O(1) 查看某key的value
+get key
+# O(1)复杂度 有值则不变，无值才新建
+setnx key val
+# O(1)复杂度 将val关联到key，并设置过期时间seconds 
+setex key seconds val
+# O(1)复杂度 有值则覆盖，无值则新建，并返回旧值
+getset key val
+# O(n)复杂度 同时设置多个key和val
+mset key1 val1 key2 val2
+# O(n)复杂度 有值则不变，无值才新建
+msetnx key1 val1 key2 val2
+# O(1)复杂度 将val追加到key对应的旧值中，无值则新建
+append key value
+# O(n)复杂度 同时获得多个key的val
+mget key1 key2
+# O(n)复杂度 返回key对应val的指定范围内容，范围由start和end指定
+getrange key start end
+# O(1)复杂度 返回指定key的val的字符串长度
+strlen key
+# O(1)复杂度 将key对应val减1
+decr key
+decrby key decrement
+# O(1)复杂度 将key对应val加1
+incr key
+incrby key increment
+```
+
+##### setnx业务场景
+
+###### 加锁
+
+SETNX 可以用作加锁原语(locking primitive)。比如说，要对关键字(key) foo 加锁，客户端可以尝试以下方式：
+
+```shell
+SETNX lock.foo <current Unix time + lock timeout + 1>
+```
+
+如果 SETNX 返回 1 ，说明客户端已经获得了锁， key 设置的 unix 时间则指定了锁失效的时间。之后客户端可以通过 DEL lock.foo 来释放锁。
+
+如果 SETNX 返回 0 ，说明 key 已经被其他客户端上锁了。如果锁是非阻塞(non-blocking lock)的，我们可以选择返回调用，或者进入一个重试循环，直到成功获得锁或重试超时(timeout)。
+
+###### 处理死锁(deadlock)
+
+如果因为客户端失败、崩溃或其他原因导致没有办法释放锁的话，怎么办？
+
+这种状况可以通过检测发现——因为上锁的 key 保存的是 unix 时间戳，假如 key 值的时间戳小于当前的时间戳，表示锁已经不再有效。
+
+但是，当有多个客户端同时检测一个锁是否过期并尝试释放它的时候，我们不能简单粗暴地删除死锁的 key ，再用 SETNX 上锁，因为这时竞争条件(race condition)已经形成了：
+
+- C1 和 C2 读取 lock.foo 并检查时间戳，SETNX 都返回 0 ，因为它已经被 C3 锁上了，但C3 在上锁之后就崩溃(crashed)了。
+
+- C1 向 lock.foo 发送 DEL 命令。
+
+- C1 向 lock.foo 发送 SETNX 并成功。
+
+- C2 向 lock.foo 发送 DEL 命令。
+
+- C2 向 lock.foo 发送 SETNX 并成功。
+
+- 出错：因为竞争条件的关系，C1 和 C2 两个都获得了锁。
+
+怎么解决有待查询资料
+
+##### incr业务场景
+
+incr可以实现一个限流器，比如一个应用限制用户访问1秒钟最多10次请求。伪代码如下：
+
+```java
+FUNCTION LIMIT_API_CALL(ip)
+ts = CURRENT_UNIX_TIME()
+keyname = ip+":"+ts
+current = GET(keyname)
+IF current != NULL AND current > 10 THEN
+ ERROR "too many requests per second"
+END
+IF current == NULL THEN
+ MULTI
+   INCR(keyname, 1)
+   EXPIRE(keyname, 1)
+ EXEC
+ELSE
+ INCR(keyname, 1)
+END
+PERFORM_API_CALL()
+```
+
+这里在增加次数和设置过期时间时使用事务，确保不会出现单个请求增加次数后未执行过期时间设置导致一直存在该缓存，导致一个用户永远只能用10次。
+
+或者可以将incr和expire用一个lua脚本实现，也可以避免竞态问题出现：
+
+```lua
+local current
+current = redis.call("incr",KEYS[1])
+if tonumber(current) == 1 then
+ redis.call("expire",KEYS[1],1)
+end
+```
+
+
+
+#### hash
+
+##### 常用命令
+
+```shell
+# O(1)复杂度
+hget key field
+# O(n)复杂度 返回key对应的hash中，所有的域和值。
+hgetall key
+# O(1)复杂度 有值则覆盖，无值则新建
+hset key field value
+# O(1)复杂度 有值则不变，无值才新建
+hsetnx key field value
+# O(n)复杂度 同时设置多个field和val
+hmset key field1 value1 field2 value2
+# O(n)复杂度 同时获得多个field的val
+hmget key field1 field2
+# (n)复杂度 同时删除多个field和val
+hdel key field1 field2
+# O(1)复杂度 获得指定key的hash中的field数量
+hlen key
+# O(1)复杂度 判断指定key的hash中field是否存在
+hexists key field
+# O(1)复杂度 为指定key的hash中的field的值加上增量 increment
+hincrby key field increment
+# O(n)复杂度 返回指定key的hash中的所有域
+hkeys key
+# O(n)复杂度 返回指定key的hash中的所有值
+hvals key
+```
+
+list的常用命令
+
+set的常用命令
+
+#### bitmap
+
+##### 常用命令
+
+```shell
+# O(1)复杂度 设置指定key下的bit数组指定index下的二进制数字是0还是1
+setbit key index 0/1
+# O(n)复杂度 获得指定key的bit数组中1的个数
+bitcount key
+```
+
+##### bitmap的业务场景
+
+实现用户上线次数统计：
+
+举个例子，如果今天是网站上线的第 100 天，而用户 peter 在今天阅览过网站，那么
+
+执行命令 SETBIT peter 100 1 ；如果明天 peter 也继续阅览网站，那么执行命令 SETBIT
+
+peter 101 1 ，以此类推。
+
+当要计算 peter 总共以来的上线次数时，就使用 BITCOUNT 命令：执行 BITCOUNT
+
+peter ，得出的结果就是 peter 上线的总天数。
+
+想要知道用户第几天上线也可以知道，整个存储成本相当的低。即使运行 10 年，占用的空间也只是每个用户 10*365 比特位(bit)，也即是每个用户 456 字节。但是对于这个数量级执行bitcount和get几乎一样快。
+
+##### 如果一个bitmap特别大怎么计算bitcount比较好？
+
+1. 分区域执行bitcount，再在内存中进行累加。
+
+2. 将大的bitmap分散到不同的key中。
+
+
 
 redis用途：缓存、限流、分布式锁、消息队列、session、排行榜、布隆过滤器
 

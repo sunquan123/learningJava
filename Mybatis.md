@@ -18,7 +18,7 @@ Mybatis的核心是ORM对象映射和缓存。
 
 3. 支持事务性的一级缓存，二级缓存和自定义缓存，其中，一级缓存是以session为生命周期，默认开启；二级缓存则是根据配置的算法来计算过期时间（FIFO，LRU等），二级缓存如果操作不当容易产生脏数据，不建议使用
 
-## Mybatis如何实现字段映射
+## Mybatis字段映射的几种方式
 
 Mybatis通过ResultSet对象来获取SQL查询返回的结果集，然后将结果集中的每行记录映射到Java对象中。在字段映射过程中，Mybatis提供了以下几种方式：  
 
@@ -31,6 +31,10 @@ Mybatis通过ResultSet对象来获取SQL查询返回的结果集，然后将结�
 4. 自定义TypeHandler映射：如果默认的字段映射方式无法满足需求，可以通过实现TypeHandler接口来自定义字段映射规则。TypeHandler可以将查询结果集中的列类型转换为Java对象属性类型，并将Java对象属性类型转换为SQL类型。可以通过在映射文件中定义TypeHandler，来实现自定义映射。  
 
 总之，Mybatis提供了多种灵活的字段映射方式，可以满足不同场景下的需求。
+
+### Mybatis为什么需要提供一个mapper接口，再实现一个xml文件呢？
+
+Mybatis通过全路径类名.方法名的方式作为key，映射一个sql方法。xml文件中的每一个select、insert、delete、update标签代表的sql方法将被转换成一个MapperStatement对象，作为映射的值。当开发者提供一个mapper接口之后，Mybatis将会使用jdk动态代理将mapper接口代理成一个proxy对象，代理对象会拦截方法，将对应方法的MapperStatement执行完，组装好sql，进行查询，得到结果再映射到对应数据类型中，最后返回给调用者。
 
 ### 字段映射的过程及原理
 
@@ -58,13 +62,15 @@ Mybatis实现字段映射的原理可以简单描述为以下几个步骤：
 
 使用${}方式传入的参数，mybatis不会对它进行特殊处理，而使用#{}传进来的参数，mybatis默认会将其当成字符串。
 
-#{}和${}在预编译处理中是不一样的。#{}类似jdbc中的PreparedStatement，对于传入的参数，在预处理阶段会使用?代替，可以有效的避免SQL注入。
+#{}和${}在预编译处理中是不一样的。mybatis在处理#{}的时候，会将#{}替换为?号，调用PreparedStatement来进行赋值，在数据库层面进行查询时会自动加上单引号，可以有效的避免SQL注入。
 
 所以我们在Mybatis中，能使用#{}的地方应尽量使用#{}，但是有一些情况是必须要用${}的，比如我们要把他用在order by、group by 等语句后面的时候。
 
 order by \${sortItem} \${sortType}
 
 ## Mybatis插件的运行原理？
+
+Mybatis只支持针对ParameterHandler、ResultSetHandler、StatementHandler、Executor这四种接口的插件。Mybatis 使用 JDK 的动态代理， 为需要拦截的接口生成代理对象以实现接口方法拦截功能， 每当执行这 4 种接口对象的方法时，就会进入拦截方法，具体就是 InvocationHandler 的invoke() 方法， 拦截那些你指定需要拦截的方法。
 
 Mybatis插件的运行原理主要涉及3个关键接口：Interceptor、Invocation和Plugin。
 
@@ -111,7 +117,7 @@ public T newInstance(SqlSession sqlSession) {
 }
 // 通过JDK动态代理生成对象
 protected T newInstance(MapperProxy<T> mapperProxy) {
-	return (T) Proxy.newProxyInstance(mapperInterface.getClassLoader(), new Class[] { mapperInterface }, mapperProxy);
+    return (T) Proxy.newProxyInstance(mapperInterface.getClassLoader(), new Class[] { mapperInterface }, mapperProxy);
 }
 ```
 
@@ -220,7 +226,7 @@ private Statement prepareStatement(StatementHandler handler, Log statementLog) t
 }
 ```
 
-我们会发现，Mybatis并不是直接从JDBC获取连接的，通过数据源来获取的，Mybatis默认提供了是那种种数据源：JNDI，PooledDataSource和UnpooledDataSource，我们也可以引入第三方数据源，如Druid等。包括驱动等都是通过数据源获取的。 
+我们会发现，Mybatis并不是直接从JDBC获取连接的，通过数据源来获取的，Mybatis默认提供了三种数据源：JNDI，PooledDataSource和UnpooledDataSource，我们也可以引入第三方数据源，如Druid等。包括驱动等都是通过数据源获取的。 
 获取到Connection之后，还不够，因为JDBC的数据库操作是需要Statement的，所以Mybatis专门抽象出来了StatementHandler处理类来专门处理和JDBC的交互，如下所示：
 
 ```java
@@ -338,6 +344,62 @@ MyBatis中提供了一些标签来支持动态SQL的生成，常见的几个有�
 ```
 
 使用foreach标签遍历了一个User集合，并根据集合中的元素生成了多个SQL语句块，用于批量更新数据库中的数据。  
+
+### Where标签
+
+有这样的一个例子：
+
+```xml
+<select id="findActiveBlogLike"
+     resultType="Blog">
+  SELECT * FROM BLOG 
+  <where> 
+    <if test="state != null">
+         state = #{state}
+    </if> 
+    <if test="title != null">
+        AND title like #{title}
+    </if>
+    <if test="author != null and author.name != null">
+        AND author_name like #{author.name}
+    </if>
+  </where>
+</select>
+```
+
+Where标签的一个作用是将内部的查询条件用where前缀拼上，如果内部查询条件为空，则where前缀也不会生成。这就避免了可能出现的多余字符导致sql出现格式错误。
+
+例如这个例子，如果查询参数没有state、title、author_name，则where保证这个sql修改为select * from BLOG
+
+Where标签的另一个作用是可以保证内部的查询条件如果包含and、or元素，where会将它消除，保证查询条件格式正确。
+
+例如上面的例子，如果查询参数没有state参数，有title参数，则where会保证查询sql修改为
+
+where title like ?
+
+### trim标签
+
+trim标签可以指定内部内容的前缀和后缀，使用prefix和suffix属性指定。也可以使用prefixOverrides和suffixOverrides属性将内部查询条件的起始位置、结束位置的and、or元素消除，保证查询条件格式正确，类似于where标签。
+
+有这样的一个例子：
+
+```xml
+<trim prefix="(" prefixOverrides="and" suffix=")">
+	<if test="state != null">
+	  and state = #{state}
+	</if> 
+	<if test="title != null">
+	  and title like #{title}
+	</if>
+	<if test="author != null and author.name != null">
+	  and author_name like #{author.name}
+	</if>
+</trim>
+```
+
+这里无论查询时缺少哪个参数，拼装出来的sql结果都会是(xxx = '' and yyy = '')，不会出现多余的and。
+
+所以trim标签可以作为一个大块查询条件的包装，将内部查询条件组合成正确的sql格式。
 
 除了以上示例中提到的标签外，MyBatis还提供了很多其他的标签来支持动态SQL的生成，可以根据实际需求进行选择和使用。
 
@@ -457,4 +519,171 @@ MyBatis-Plus是一个增强的MyBatis框架，提供了许多实用的功能和�
 
 4. 代码生成器生成的代码可能需要手动调整：MyBatis-Plus的代码生成器可以自动生成大量的代码，但是有时候生成的代码可能不符合项目的需求，需要手动进行调整。
 
+## sql in 超过1000的最佳修改方式
 
+我们日常开发过程中肯定遇到过这种问题：
+
+当mybatis的in查询条件超过1000时会报错，需要修改in查询的部分
+
+示例代码如下：
+
+```xml
+ID in      
+ <foreach collection="itemIds" index="index" item="item" open="(" close=")">
+    <if test="index != 0">
+         <choose>
+            <when test="index % 1000 == 999"> ) OR ID IN( </when>
+                          <otherwise>,</otherwise>
+         </choose>
+    </if>
+   #{item}
+ </foreach>
+```
+
+如果是普通查询，到这里一般就认为没啥问题了。但是，仔细研究这条sql语句的话，会找出漏洞。
+
+### 我们先写一个基本使用案例：
+
+```xml
+select * from student where sex = #{sex}
+ <if test="xxxList != null and xxxList.size() > 0">
+            and id in
+            <foreach collection="idList" item="item" index="index" open="(" close=")">
+                <if test="index > 0">
+                    <choose>
+                        <when test="index % 1000 == 999"> ) or id in( </when>
+                          <otherwise>,</otherwise>
+                     </choose>
+                </if>
+                #{item}
+            </foreach>
+        </if>
+```
+
+当参数不超过1000时，sql语句like：
+
+select * from student where sex = #{sex} and id in ('1','2')
+
+当超过1000时，sql语句like：
+
+select * from student where sex = #{sex} and id in ('1',...'999') or id in ('1000','1001')
+
+#### 注意：
+
+这里的查询条件从查询sex和id同时满足要求变成了sex和id在999以内为一个条件，同时or上id在1000以上为另一个条件。这就导致原本的查询条件变成了两组，查询到的结果变多了。
+
+这里如果看懂了就不需要看这个解释部分，如果没看懂，请继续查看这一部分。
+
+### 解释部分
+
+原本这条sql的查询要求是根据学生性别和学生id查询到对应的学生记录。
+
+即select * from student where sex = #{sex} and id in ('1','2')这条sql满足查询要求，不会查询到多余的数据。
+
+如果使用select * from student where sex = #{sex} and id in ('1',...'999') or id in ('1000','1001')查询，将会得到以下数据：
+
+学生id在1000以内的，且性别为指定性别的数据+学生id在1000以上的数据。
+
+按照查询要求，正确的数据应该是：
+
+学生id在1000以内的，且性别为指定性别的数据+学生id在1000以上的，且性别为指定性别的数据。
+
+这样就能明白，上面的sql改变了查询要求，返回了不应该查到的数据。
+
+### 最佳修改方式
+
+理论上，应该得到的sql语句应该是：
+
+select * from student where sex = #{sex} and (id in ('1',...'999') or id in ('1000','1001'))
+
+所以，修改的sql in形式应该如下：
+
+```xml
+select * from student where sex = #{sex}
+ <if test="xxxList != null and xxxList.size() > 0">
+            and (id in
+            <foreach collection="idList" item="item" index="index" open="(" close=")">
+                <if test="index > 0">
+                    <choose>
+                        <when test="index % 1000 == 999"> ) or id in( </when>
+                          <otherwise>,</otherwise>
+                     </choose>
+                </if>
+                #{item}
+            </foreach>
+            )
+        </if>
+```
+
+### Mybatis-Generator生成代码也需要修改
+
+Mybatis-Generator生成的代码也有sql in查询的问题，需要开发者自己在项目中找到并修改。
+
+```xml
+<when test="criterion.listValue">
+    and ${criterion.condition}
+    <foreach close=")" collection="criterion.value" item="listItem" open="(" separator=",">
+    #{listItem}
+    </foreach>
+</when>
+```
+
+修改后的代码如下：
+
+```xml
+<when test="criterion.listValue">
+    and (${criterion.condition}
+    <foreach collection="criterion.value" item="listItem" index="index" open="(" close=")">
+          <if test="index > 0">
+               <choose>
+                    <when test="index % 1000 == 999"> ) or ${criterion.condition}( </when>
+                    <otherwise>,</otherwise>
+               </choose>
+           </if>
+           #{listItem}
+    </foreach>
+     )
+</when>
+```
+
+如果公司有定制化Mybatis-Generator的能力，也可以自己修改Mybatis-Generator项目的生成代码，最后将指定版本工具推广到全公司哟~
+
+## 如何用Mybatis实现批量插入？
+
+常规的sql写法应该是：
+
+```sql
+insert into table (id, name,sex,address)
+ values
+ (?,?,?,?),(?,?,?,?),(?,?,?,?),(?,?,?,?)
+```
+
+项目中的写法如下：
+
+### 业务层
+
+service中对大批量数据进行分片，每一片设定1000个元素，再对每一片进行插入操作
+
+这里的分片我采用的是guava提供的api，理论上其他的commons-collections4、Hutool包能实现相同的功能的都可以直接用。
+
+```java
+// 将list分片成1000个元素一个list，执行批量插入操作
+List<List<User>> partition = Lists.partition(userList, 1000);
+for (List<User> userList : partition) {
+     userMapper.insertBatch(userList);
+}
+```
+
+### sql层
+
+xml中定义的批量插入语句
+
+```xml
+<insert id="insertBatch" >
+    insert into user ( <include refid="Base_Column_List" /> ) 
+    values 
+    <foreach collection="list" item="item" index="index" separator=",">
+        (#{item.id},#{item.name},#{item.sex},#{item.address})
+    </foreach>
+</insert>
+```

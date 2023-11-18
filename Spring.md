@@ -658,25 +658,24 @@ public class B {
 2023-11-17 20:05:57.889 ERROR 16032 --- [           main] o.s.boot.SpringApplication               : Application run failed
 
 org.springframework.beans.factory.BeanCurrentlyInCreationException: Error creating bean with name 'a': Bean with name 'a' has been injected into other beans [b] in its raw version as part of a circular reference, but has eventually been wrapped. This means that said other beans do not use the final version of the bean. This is often the result of over-eager type matching - consider using 'getBeanNamesForType' with the 'allowEagerInit' flag turned off, for example.
-	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.doCreateBean(AbstractAutowireCapableBeanFactory.java:649) ~[spring-beans-5.3.29.jar:5.3.29]
-	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBean(AbstractAutowireCapableBeanFactory.java:542) ~[spring-beans-5.3.29.jar:5.3.29]
-	at org.springframework.beans.factory.support.AbstractBeanFactory.lambda$doGetBean$0(AbstractBeanFactory.java:335) ~[spring-beans-5.3.29.jar:5.3.29]
-	at org.springframework.beans.factory.support.DefaultSingletonBeanRegistry.getSingleton(DefaultSingletonBeanRegistry.java:234) ~[spring-beans-5.3.29.jar:5.3.29]
-	at org.springframework.beans.factory.support.AbstractBeanFactory.doGetBean(AbstractBeanFactory.java:333) ~[spring-beans-5.3.29.jar:5.3.29]
-	at org.springframework.beans.factory.support.AbstractBeanFactory.getBean(AbstractBeanFactory.java:208) ~[spring-beans-5.3.29.jar:5.3.29]
-	at org.springframework.beans.factory.support.DefaultListableBeanFactory.preInstantiateSingletons(DefaultListableBeanFactory.java:955) ~[spring-beans-5.3.29.jar:5.3.29]
-	at org.springframework.context.support.AbstractApplicationContext.finishBeanFactoryInitialization(AbstractApplicationContext.java:921) ~[spring-context-5.3.29.jar:5.3.29]
-	at org.springframework.context.support.AbstractApplicationContext.refresh(AbstractApplicationContext.java:583) ~[spring-context-5.3.29.jar:5.3.29]
-	at org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext.refresh(ServletWebServerApplicationContext.java:147) ~[spring-boot-2.7.14.jar:2.7.14]
-	at org.springframework.boot.SpringApplication.refresh(SpringApplication.java:731) [spring-boot-2.7.14.jar:2.7.14]
-	at org.springframework.boot.SpringApplication.refreshContext(SpringApplication.java:408) [spring-boot-2.7.14.jar:2.7.14]
-	at org.springframework.boot.SpringApplication.run(SpringApplication.java:307) [spring-boot-2.7.14.jar:2.7.14]
-	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1303) [spring-boot-2.7.14.jar:2.7.14]
-	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1292) [spring-boot-2.7.14.jar:2.7.14]
-	at com.sun.fileconverter.FileConverterApplication.main(FileConverterApplication.java:16) [classes/:na]
+    at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.doCreateBean(AbstractAutowireCapableBeanFactory.java:649) ~[spring-beans-5.3.29.jar:5.3.29]
+    at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBean(AbstractAutowireCapableBeanFactory.java:542) ~[spring-beans-5.3.29.jar:5.3.29]
+    at org.springframework.beans.factory.support.AbstractBeanFactory.lambda$doGetBean$0(AbstractBeanFactory.java:335) ~[spring-beans-5.3.29.jar:5.3.29]
+    at org.springframework.beans.factory.support.DefaultSingletonBeanRegistry.getSingleton(DefaultSingletonBeanRegistry.java:234) ~[spring-beans-5.3.29.jar:5.3.29]
+    at org.springframework.beans.factory.support.AbstractBeanFactory.doGetBean(AbstractBeanFactory.java:333) ~[spring-beans-5.3.29.jar:5.3.29]
+    at org.springframework.beans.factory.support.AbstractBeanFactory.getBean(AbstractBeanFactory.java:208) ~[spring-beans-5.3.29.jar:5.3.29]
+    at org.springframework.beans.factory.support.DefaultListableBeanFactory.preInstantiateSingletons(DefaultListableBeanFactory.java:955) ~[spring-beans-5.3.29.jar:5.3.29]
+    at org.springframework.context.support.AbstractApplicationContext.finishBeanFactoryInitialization(AbstractApplicationContext.java:921) ~[spring-context-5.3.29.jar:5.3.29]
+    at org.springframework.context.support.AbstractApplicationContext.refresh(AbstractApplicationContext.java:583) ~[spring-context-5.3.29.jar:5.3.29]
+    at org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext.refresh(ServletWebServerApplicationContext.java:147) ~[spring-boot-2.7.14.jar:2.7.14]
+    at org.springframework.boot.SpringApplication.refresh(SpringApplication.java:731) [spring-boot-2.7.14.jar:2.7.14]
+    at org.springframework.boot.SpringApplication.refreshContext(SpringApplication.java:408) [spring-boot-2.7.14.jar:2.7.14]
+    at org.springframework.boot.SpringApplication.run(SpringApplication.java:307) [spring-boot-2.7.14.jar:2.7.14]
+    at org.springframework.boot.SpringApplication.run(SpringApplication.java:1303) [spring-boot-2.7.14.jar:2.7.14]
+    at org.springframework.boot.SpringApplication.run(SpringApplication.java:1292) [spring-boot-2.7.14.jar:2.7.14]
+    at com.sun.fileconverter.FileConverterApplication.main(FileConverterApplication.java:16) [classes/:na]
 
 Disconnected from the target VM, address: '127.0.0.1:10700', transport: 'socket'
-
 ```
 
 这里可以看到，A有async方法，是一个需要被代理的bean，B是个简单的bean。启动程序后，实例化A，然后将A加入到三级缓存中，A初始化，需要依赖B；B不在一级、二级、三级缓存中，则实例化B，将B加入到三级缓存中，初始化B，需要依赖A，A在三级缓存中有，直接返回缓存对象到二级缓存中，所以三级缓存返回对象是A原始对象，此时初始化的逻辑出问题了：从二级缓存中能拿到A的原始对象，A自身初始化完成后会生成代理对象（@Async注解会在postProcessAfterInitialization阶段将A代理生成对象），Spring此时判断这个A又没有配置允许此bean的原始对象注入到其他bean中，则判断二级缓存和生成对象不一致，抛出了异常。
@@ -685,71 +684,71 @@ Spring中对应代码处理部分：
 
 ```java
     protected Object doCreateBean( ... ){
-    	...
-    	boolean earlySingletonExposure = (mbd.isSingleton() && this.allowCircularReferences && isSingletonCurrentlyInCreation(beanName));
-    	if (earlySingletonExposure) {
-    		addSingletonFactory(beanName, () -> getEarlyBeanReference(beanName, mbd, bean));
-    	}
-    	...
-    
-    	// populateBean这一句特别的关键，它需要给A的属性赋值，所以此处会去实例化B~~
-    	// 而B我们从上可以看到它就是个普通的Bean（并不需要创建代理对象），实例化完成之后，继续给他的属性A赋值，而此时它会去拿到A的早期引用
-    	// 也就在此处在给B的属性a赋值的时候，会执行到上面放进去的Bean A流程中的getEarlyBeanReference()方法  从而拿到A的早期引用~~
-    	// 执行A的getEarlyBeanReference()方法的时候，会执行自动代理创建器，但是由于A没有标注事务，所以最终不会创建代理，so B合格属性引用会是A的**原始对象**
-    	// 需要注意的是：@Async的代理对象不是在getEarlyBeanReference()中创建的，是在postProcessAfterInitialization创建的代理
-    	// 从这我们也可以看出@Async的代理它默认并不支持你去循环引用，因为它并没有把代理对象的早期引用提供出来~~~（注意这点和自动代理创建器的区别~）
-    
-    	// 结论：此处给A的依赖属性字段B赋值为了B的实例(因为B不需要创建代理，所以就是原始对象)
-    	// 而此处实例B里面依赖的A注入的仍旧为Bean A的普通实例对象（注意  是原始对象非代理对象）  注：此时exposedObject也依旧为原始对象
-    	populateBean(beanName, mbd, instanceWrapper);
-    	
-    	// 标注有@Async的Bean的代理对象在此处会被生成~~~ 参照类：AsyncAnnotationBeanPostProcessor
-    	// 所以此句执行完成后  exposedObject就会是个代理对象而非原始对象了
-    	exposedObject = initializeBean(beanName, exposedObject, mbd);
-    	
-    	...
-    	// 这里是报错的重点~~~
-    	if (earlySingletonExposure) {
-    		// 上面说了A被B循环依赖进去了，所以此时A是被放进了二级缓存的，所以此处earlySingletonReference 是A的原始对象的引用
-    		// （这也就解释了为何我说：如果A没有被循环依赖，是不会报错不会有问题的   因为若没有循环依赖earlySingletonReference =null后面就直接return了）
-    		Object earlySingletonReference = getSingleton(beanName, false);
-    		if (earlySingletonReference != null) {
-    			// 上面分析了exposedObject 是被@Aysnc代理过的对象， 而bean是原始对象 所以此处不相等  走else逻辑
-    			if (exposedObject == bean) {
-    				exposedObject = earlySingletonReference;
-    			}
-    			// allowRawInjectionDespiteWrapping 标注是否允许此Bean的原始类型被注入到其它Bean里面，即使自己最终会被包装（代理）
-    			// 默认是false表示不允许，如果改为true表示允许，就不会报错啦。这是我们后面讲的决方案的其中一个方案~~~
-    			// 另外dependentBeanMap记录着每个Bean它所依赖的Bean的Map~~~~
-    			else if (!this.allowRawInjectionDespiteWrapping && hasDependentBean(beanName)) {
-    				// 我们的Bean A依赖于B，so此处值为["b"]
-    				String[] dependentBeans = getDependentBeans(beanName);
-    				Set<String> actualDependentBeans = new LinkedHashSet<>(dependentBeans.length);
-    
-    				// 对所有的依赖进行一一检查~	比如此处B就会有问题
-    				// “b”它经过removeSingletonIfCreatedForTypeCheckOnly最终返返回false  因为alreadyCreated里面已经有它了表示B已经完全创建完成了~~~
-    				// 而b都完成了，所以属性a也赋值完成儿聊 但是B里面引用的a和主流程我这个A竟然不相等，那肯定就有问题(说明不是最终的)~~~
-    				// so最终会被加入到actualDependentBeans里面去，表示A真正的依赖~~~
-    				for (String dependentBean : dependentBeans) {
-    					if (!removeSingletonIfCreatedForTypeCheckOnly(dependentBean)) {
-    						actualDependentBeans.add(dependentBean);
-    					}
-    				}
-    	
-    				// 若存在这种真正的依赖，那就报错了~~~  则个异常就是上面看到的异常信息
-    				if (!actualDependentBeans.isEmpty()) {
-    					throw new BeanCurrentlyInCreationException(beanName,
-    							"Bean with name '" + beanName + "' has been injected into other beans [" +
-    							StringUtils.collectionToCommaDelimitedString(actualDependentBeans) +
-    							"] in its raw version as part of a circular reference, but has eventually been " +
-    							"wrapped. This means that said other beans do not use the final version of the " +
-    							"bean. This is often the result of over-eager type matching - consider using " +
-    							"'getBeanNamesOfType' with the 'allowEagerInit' flag turned off, for example.");
-    				}
-    			}
-    		}
-    	}
-    	...
+        ...
+        boolean earlySingletonExposure = (mbd.isSingleton() && this.allowCircularReferences && isSingletonCurrentlyInCreation(beanName));
+        if (earlySingletonExposure) {
+            addSingletonFactory(beanName, () -> getEarlyBeanReference(beanName, mbd, bean));
+        }
+        ...
+
+        // populateBean这一句特别的关键，它需要给A的属性赋值，所以此处会去实例化B~~
+        // 而B我们从上可以看到它就是个普通的Bean（并不需要创建代理对象），实例化完成之后，继续给他的属性A赋值，而此时它会去拿到A的早期引用
+        // 也就在此处在给B的属性a赋值的时候，会执行到上面放进去的Bean A流程中的getEarlyBeanReference()方法  从而拿到A的早期引用~~
+        // 执行A的getEarlyBeanReference()方法的时候，会执行自动代理创建器，但是由于A没有标注事务，所以最终不会创建代理，so B合格属性引用会是A的**原始对象**
+        // 需要注意的是：@Async的代理对象不是在getEarlyBeanReference()中创建的，是在postProcessAfterInitialization创建的代理
+        // 从这我们也可以看出@Async的代理它默认并不支持你去循环引用，因为它并没有把代理对象的早期引用提供出来~~~（注意这点和自动代理创建器的区别~）
+
+        // 结论：此处给A的依赖属性字段B赋值为了B的实例(因为B不需要创建代理，所以就是原始对象)
+        // 而此处实例B里面依赖的A注入的仍旧为Bean A的普通实例对象（注意  是原始对象非代理对象）  注：此时exposedObject也依旧为原始对象
+        populateBean(beanName, mbd, instanceWrapper);
+
+        // 标注有@Async的Bean的代理对象在此处会被生成~~~ 参照类：AsyncAnnotationBeanPostProcessor
+        // 所以此句执行完成后  exposedObject就会是个代理对象而非原始对象了
+        exposedObject = initializeBean(beanName, exposedObject, mbd);
+
+        ...
+        // 这里是报错的重点~~~
+        if (earlySingletonExposure) {
+            // 上面说了A被B循环依赖进去了，所以此时A是被放进了二级缓存的，所以此处earlySingletonReference 是A的原始对象的引用
+            // （这也就解释了为何我说：如果A没有被循环依赖，是不会报错不会有问题的   因为若没有循环依赖earlySingletonReference =null后面就直接return了）
+            Object earlySingletonReference = getSingleton(beanName, false);
+            if (earlySingletonReference != null) {
+                // 上面分析了exposedObject 是被@Aysnc代理过的对象， 而bean是原始对象 所以此处不相等  走else逻辑
+                if (exposedObject == bean) {
+                    exposedObject = earlySingletonReference;
+                }
+                // allowRawInjectionDespiteWrapping 标注是否允许此Bean的原始类型被注入到其它Bean里面，即使自己最终会被包装（代理）
+                // 默认是false表示不允许，如果改为true表示允许，就不会报错啦。这是我们后面讲的决方案的其中一个方案~~~
+                // 另外dependentBeanMap记录着每个Bean它所依赖的Bean的Map~~~~
+                else if (!this.allowRawInjectionDespiteWrapping && hasDependentBean(beanName)) {
+                    // 我们的Bean A依赖于B，so此处值为["b"]
+                    String[] dependentBeans = getDependentBeans(beanName);
+                    Set<String> actualDependentBeans = new LinkedHashSet<>(dependentBeans.length);
+
+                    // 对所有的依赖进行一一检查~    比如此处B就会有问题
+                    // “b”它经过removeSingletonIfCreatedForTypeCheckOnly最终返返回false  因为alreadyCreated里面已经有它了表示B已经完全创建完成了~~~
+                    // 而b都完成了，所以属性a也赋值完成儿聊 但是B里面引用的a和主流程我这个A竟然不相等，那肯定就有问题(说明不是最终的)~~~
+                    // so最终会被加入到actualDependentBeans里面去，表示A真正的依赖~~~
+                    for (String dependentBean : dependentBeans) {
+                        if (!removeSingletonIfCreatedForTypeCheckOnly(dependentBean)) {
+                            actualDependentBeans.add(dependentBean);
+                        }
+                    }
+
+                    // 若存在这种真正的依赖，那就报错了~~~  则个异常就是上面看到的异常信息
+                    if (!actualDependentBeans.isEmpty()) {
+                        throw new BeanCurrentlyInCreationException(beanName,
+                                "Bean with name '" + beanName + "' has been injected into other beans [" +
+                                StringUtils.collectionToCommaDelimitedString(actualDependentBeans) +
+                                "] in its raw version as part of a circular reference, but has eventually been " +
+                                "wrapped. This means that said other beans do not use the final version of the " +
+                                "bean. This is often the result of over-eager type matching - consider using " +
+                                "'getBeanNamesOfType' with the 'allowEagerInit' flag turned off, for example.");
+                    }
+                }
+            }
+        }
+        ...
     }
 ```
 
@@ -1180,3 +1179,982 @@ AOT的引入，意味着Spring生态正式引入了提前编译技术，相比�
 有了Spring Native ，Spring可以不再依赖Java虚拟机，而是基于 GraalVM 将 Spring 应用程序编译成原生镜像（native image），提供了一种新的方式来部署 Spring 应用。这种部署Spring的方式是云原生友好的。
 
 Spring Native的优点是编译出来的原生 Spring 应用可以作为一个独立的可执行文件进行部署，而不需要安装JVM，而且启动时间非常短、并且有更少的资源消耗。他的缺点就是构建时长要比JVM更长一些，且不支持一些动态代理功能。
+
+## Spring的事务传播机制有哪些？
+
+Spring的事务传播机制用于控制在多个事务方法相互调用时事务的行为。
+
+在复杂的业务场景中，多个事务方法之间的调用可能会导致事务的不一致，如出现数据丢失、重复提交、出异常等问题，合理的配置事务传播机制可以处理这些问题，保证事务的一致性和完整性，保证业务功能的正确执行。
+
+Spring的事务规定了7种事务的传播级别，默认的传播机制是REQUIRED
+
+- REQUIRED，如果不存在事务则开启一个事务，如果存在事务则加入之前的事务，总是只有一个事务在执行
+
+- REQUIRES_NEW，每次执行新开一个事务
+
+- SUPPORTS，有事务则加入事务，没有事务则普通执行
+
+- NOT_SUPPORTED，有事务则暂停该事务，没有则普通执行
+
+- MANDATORY，强制有事务，没有事务则报异常
+
+- NEVER，有事务则报异常
+
+- NESTED，如果之前有事务，则创建嵌套事务，嵌套事务回滚不影响父事务，反之父事务影响嵌套事务
+
+假设有两个业务方法A和B，方法A在方法B中被调用，需要在事务中保证它们的一致性，如果方法A或方法B中的任何一个方法发生异常，则需要回滚事务。
+
+使用Spring的事务传播机制，可以在方法A和方法B上使用相同的事务管理器，并通过设置相同的传播行为来保证事务的一致性和完整性。具体实现如下：
+
+```java
+@Service
+public class TransactionFooService {
+    @Autowired
+    private FooDao fooDao;
+    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    public void methodA() throws Exception {
+        // do something
+        fooDao.updateFoo();
+    }
+}
+
+@Service
+public class TransactionBarService {
+    @Autowired
+    private BarDao barDao;
+      @Autowired
+      private TransactionFooService transactionFooService;
+    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    public void methodB() throws Exception {
+        // do something
+        barDao.updateBar();
+        transactionFooService.methodA();
+    }
+}
+```
+
+在上述示例中，方法A和方法B都使用了REQUIRED的传播行为，表示如果当前存在事务，则在当前事务中执行；如果当前没有事务，则创建一个新的事务。如果在方法A或方法B中出现异常，则整个事务会自动回滚。
+
+rollbackFor是Spring事务中的一个属性，用于指定哪些异常会触发事务回滚。
+
+在一个事务方法中，如果发生了rollbackFor属性指定的异常或其子类异常，则事务会回滚。如果不指定rollbackFor，则默认情况下只有RuntimeException和Error会触发事务回滚。
+
+问：一个长的事务方法a，在读写分离的情况下，里面既有读库操作，也有写库操作，再调用个读库方法b，方法b该用什么传播机制呢？
+
+答：分情况讨论，如果读方法是在整个事务中间位置，读取的结果需要继续处理，则读方法需要加上REQUIRED标注，读取出现问题的话，整个事务需要回滚处理。如果读方法是在整个事务最后位置，读取结果不需要继续处理，则读方法可以设置NOT_SUPPORTED，防止读取异常导致整个事务回滚。
+
+## Spring中如何使用事务？
+
+事务管理在系统开发中是不可缺少的一部分，Spring提供了很好事务管理机制，主要分为编程式事务和声明式事务两种。
+
+### 编程式事务
+
+基于底层的API，如PlatformTransactionManager、TransactionDefinition 和 TransactionTemplate 等核心接口，开发者完全可以通过编程的方式来进行事务管理。
+
+编程式事务方式需要是开发者在代码中手动的管理事务的开启、提交、回滚等操作。
+
+```java
+public void test() {
+      TransactionDefinition def = new DefaultTransactionDefinition();
+      TransactionStatus status = transactionManager.getTransaction(def);
+
+       try {
+         // 事务操作
+         // 事务提交
+         transactionManager.commit(status);
+      } catch (DataAccessException e) {
+         // 事务回滚
+         transactionManager.rollback(status);
+         throw e;
+      }
+}
+```
+
+如以上代码，开发者可以通过API自己控制事务。
+
+### 声明式事务
+
+声明式事务管理方法允许开发者配置的帮助下来管理事务，而不需要依赖底层API进行硬编码。开发者可以只使用注解或基于配置的 XML 来管理事务。
+
+```java
+@Transactional
+public void test() {
+     // 事务操作  
+}
+```
+
+如上，使用@Transactional即可给test方法增加事务控制。
+
+#### 声明式事务的优点
+
+通过上面的例子，其实我们可以很容易的看出来，声明式事务帮助我们节省了很多代码，他会自动帮我们进行事务的开启、提交以及回滚等操作，把程序员从事务管理中解放出来。
+
+声明式事务管理使用了 AOP 实现的，本质就是在目标方法执行前后进行拦截。在目标方法执行前加入或创建一个事务，在执行方法执行后，根据实际情况选择提交或是回滚事务。
+
+使用这种方式，对代码没有侵入性，方法内只需要写业务逻辑就可以了。
+
+#### 声明式事务的粒度问题
+
+首先，声明式事务有一个局限，那就是他的最小粒度要作用在方法上。
+
+也就是说，如果想要给一部分代码块增加事务的话，那就需要把这个部分代码块单独独立出来作为一个方法。
+
+但是，正是因为这个粒度问题，容易给代码管理带来麻烦。声明式事务容易被开发者忽略。
+
+如果在一个事务中加入了其他逻辑，例如：远程调用、消息发送、缓存更新、文件写入，这些操作并不会自动的和事务一样自动回滚。
+
+1. 这些操作如果耗时较长，容易引起项目内数据库连接长时间被占用，导致数据库连接池耗尽。
+
+2. 这些操作没有回滚的操作的话，事务出现异常回滚了，这个操作并没有回滚，会导致数据不一致的问题。
+
+但是如果是编程式事务的话，业务代码中就会清清楚楚看到什么地方开启事务，什么地方提交，什么时候回滚。这样有人改这段代码的时候，就会强制他考虑要加的代码是否应该放在事务内。
+
+#### 声明式事务用不对容易失效
+
+除了事务的粒度问题，还有一个问题那就是声明式事务虽然看上去帮我们简化了很多代码，但是一旦没用对，也很容易导致事务失效。
+
+如以下几种场景就可能导致声明式事务失效：
+
+1. @Transactional 应用在非 public 修饰的方法上，idea会提示，但是程序能运行起来
+
+2. @Transactional 应用在final/static修饰的方法上，idea会提示，但是程序能运行起来
+
+3. 调用本类内部的@Transactional方法
+
+4. 异常被catch捕获导致@Transactional失效
+
+5. 数据库引擎不支持事务
+
+6. @Transactional用的不对，例如设置了propagation为NOT_SUPPORTED，这个方法将在无事务下执行，回滚之类的和这个方法也没有关系了。
+
+7. 因为Spring的事务是基于AOP实现的，但是在代码中，有时候我们会有很多切面，不同的切面可能会来处理不同的事情，多个切面之间可能会有相互影响。如果某个切面里面做了异常的统一捕获，导致事务的切面没有捕获到异常，导致事务无法回滚。
+
+关于@Transactional的用法，Java开发手册中也有提到过：
+
+@Transactional事务不要滥用，事务会影响数据库的QPS，另外使用事务的地方需要考虑各个方面的回滚方案，包括缓存回滚、搜索引擎回滚、消息补偿、统计修正等。
+
+## Autowired和Resource的关系？
+
+### 相同点
+
+两个注解的功能基本是等价的，他们都可以将bean注入到对应的field中
+
+```java
+@Autowired
+private Bean beanA;
+@Resource
+private Bean beanB;
+```
+
+### 不同点
+
+#### byName和byType匹配顺序不同
+
+Autowired在获取bean的时候，先是byType的方式，再是byName的方式。意思就是先在Spring容器中找以Bean为类型的Bean实例，如果找不到或者找到多个bean，则会通过fieldName来找。举个例子：
+
+```java
+@Component("beanOne")
+class BeanOne implements Bean {}
+@Component("beanTwo")
+class BeanTwo implements Bean {}
+@Service
+class Test {
+    // 此时会报错，先byType找到两个bean：beanOne和beanTwo
+    // 然后通过byName（bean）仍然没办法匹配
+    @Autowired
+    private Bean bean; 
+
+    // 先byType找到两个bean，然后通过byName确认最后要注入的bean
+    @Autowired
+    private Bean beanOne;
+
+    // 先byType找到两个bean，然后通过byName确认最后要注入的bean
+    @Autowired
+    @Qualifier("beanOne")
+    private Bean bean;
+}
+```
+
+Resource在获取bean的时候，和Autowired恰好相反，先是byName方式，然后再是byType方式。当然，我们也可以通过注解中的参数显示指定通过哪种方式。同样举个例子：
+
+```java
+@Component("beanOne")
+class BeanOne implements Bean {}
+@Component("beanTwo")
+class BeanTwo implements Bean {}
+@Service
+class Test {
+    // 此时会报错，先byName，发现没有找到bean
+    // 然后通过byType找到了两个Bean：beanOne和beanTwo，仍然没办法匹配
+    @Resource
+    private Bean bean; 
+
+    // 先byName直接找到了beanOne，然后注入
+    @Resource
+    private Bean beanOne;
+
+    // 显式通过byType注入，能注入成功
+    @Resource(type = BeanOne.class)
+    private Bean beanOne;
+}
+```
+
+#### 作用域不同
+
+1. Autowired可以作用在构造器，字段，setter方法上
+
+2. Resource 只可以使用在field，setter方法上
+
+#### 支持方不同
+
+1. Autowired是Spring提供的自动注入注解，只有Spring容器会支持，如果做容器迁移，是需要修改代码的
+
+2. Resource是JDK官方提供的自动注入注解（JSR-250）。它等于说是一个标准或者约定，所有的IOC容器都会支持这个注解。假如系统容器从Spring迁移到其他IOC容器中，是不需要修改代码的。
+
+## BeanFactory和FactroyBean的关系？
+
+他们的区别比较容易理解，从字面意思就能区分开发，BeanFactory是Bean工厂，而FactroyBean是工厂Bean。
+
+BeanFactory，Spring中工厂的顶层规范，他是IOC容器的核心接口，它的职责包括：实例化、定位、配置应用程序中的对象及建立这些对象间的依赖。它定义了getBean()、containsBean()等管理Bean的通用方法。
+
+Spring 容器中有两种Bean：普通Bean和工厂Bean。Spring直接使用前者，FactoryBean跟普通Bean不同，其返回的对象不是指定类的一个实例，而是该FactoryBean的getObject方法所返回的对象。
+
+```java
+public interface FactoryBean<T> {
+    @Nullable
+    T getObject() throws Exception;
+    @Nullable
+    Class<?> getObjectType();
+    default boolean isSingleton() {
+        return true;
+    }
+}
+```
+
+Spring通过反射机制利用bean的class属性指定的实现类来实例化bean 。在某些情况下，实例化bean过程比较复杂，如果按照传统的方式，则需要在定义bean的地方提供大量的配置信息，配置方式的灵活性是受限的，这时采用编码的方式可能会得到更好的效果。Spring为此提供了一个org.Springframework.beans.factory.FactoryBean的工厂类接口，用户可以通过实现该接口定制实例化bean的逻辑。
+
+Spring框架本身就自带了实现FactoryBean的70多个类，如ProxyFactoryBean、MapFactoryBean、PropertiesFactoryBean等。
+
+## Spring在业务中常见的使用方式
+
+### 通过IOC实现策略模式
+
+很多时候，我们需要对不同的场景进行不同的业务逻辑处理，举个例子，譬如不同的场景需要不同支付方式，普通的逻辑是使用if-else，多层if-else嵌套导致代码可读性很差。
+
+我们可以借助Spring来完成策略模式。
+
+```java
+interface PayFacade extends InitializingBean {
+    void pay();
+    Scene getSupportScene();
+    @Override
+    default void afterPropertiesSet() throws Exception {
+        PayFactory.register(getSupportScene(), this);
+    }
+}
+@Component
+class WeiXinPay implements PayFacade {
+    @Override
+    public void pay() {
+        // by weixin
+    }
+    @Override
+    public Scene getSupportScene() {
+        return Scene.TENCENT;
+    }
+}
+@Component
+class AliPay implements PayFacade {
+    @Override
+    public void pay() {
+        // by alipay
+    }
+    @Override
+    public Scene getSupportScene() {
+        return Scene.ALIBABA;
+    }
+}
+class PayFactory {
+    private static final Map<Scene, PayFacade> PAY_FACADE = Maps.newHashMap();
+    public static void register(Scene scene, PayFacade payFacade) {
+        PAY_FACADE.put(scene, payFacade);
+    }
+    public static PayFacade get(Scene scene) {
+        return PAY_FACADE.get(scene);
+    }
+}
+public void use(Scene scene) {
+    PayFactory.get(scene);
+}
+```
+
+这样子，调用方只需要调用Payfactory#get即可，不需要感知内部的实现细节和逻辑。需要说明的是，这里使用了InitializingBean只是实现方式之一，还有其他的实现方式，如通过Autowired注解，BeanPostProcess等，这里不做过多赘述。
+
+### 通过AOP实现拦截
+
+很多时候，我们一般是通过注解和AOP相结合。大概的实现思路就是先定义一个注解，然后通过AOP去发现使用过该注解的类，对该类的方法进行代理处理，增加额外的逻辑，譬如参数校验，缓存，日志打印等等，如下代码所示：
+
+#### 参数校验
+
+```java
+@Target({ ElementType.METHOD, ElementType.FIELD})
+@Retention(RetentionPolicy.RUNTIME)
+public @interface ParamsCheck {
+    boolean ignore() default false;
+}
+
+@Aspect
+@Component
+public class ValidateAspect {
+
+    @Around("@annotation(com.hollis.annotation.ParamCheck)")
+    public void ParamCheckAround(JoinPoint joinPoint) throws Throwable {
+        // 判断是否需要校验
+        MethodSignature signature = (MethodSignature) joinPoint.getSignature();
+        Method method = signature.getMethod();
+        ParamsCheck paramsCheckAnnotation = method.getAnnotation(ParamsCheck.class);
+        if (paramsCheckAnnotation != null && paramsCheckAnnotation.ignore()) {
+            return joinPoint.proceed();
+        }
+        Object[] objects = joinPoint.getArgs();
+        for (Object arg : objects) {
+            if (arg == null) {
+                break;
+            }
+           // 校验参数，失败抛出异常
+        }
+    }
+}
+```
+
+#### 缓存逻辑
+
+```java
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface Cacheable {
+    /**
+     * 策略名称，需要保证唯一
+     *
+     * @return
+     */
+    public String keyName();
+
+    /**
+     * 超时时长，单位：秒
+     *
+     * @return
+     */
+    public int expireTime();
+}
+@Aspect
+@Component
+public class CacheableAspect {
+    private static final Logger LOGGER = LoggerFactory.getLogger(FacadeAspect.class);
+    @Around("@annotation(com.hollis.cache.Cacheable)")
+    public Object cache(ProceedingJoinPoint pjp) throws Throwable {
+        // 先查缓存，如果缓存中有值，直接返回。如果缓存中没有，先执行方法，再将返回值存储到缓存中。
+    }
+}
+```
+
+#### 日志打印
+
+```java
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface OpLog {}
+@Aspect
+@Component
+public class OpLogAspect {
+    private static final Logger LOGGER = LoggerFactory.getLogger(OpLogAspect.class);
+    @Autowired
+    HttpServletRequest request;
+    @Around("@annotation(com.hollis.annotation.OpLog)")
+    public Object log(ProceedingJoinPoint pjp) throws Exception {
+        Method method = ((MethodSignature)pjp.getSignature()).getMethod();
+        OpLog opLog = method.getAnnotation(OpLog.class);
+        Object response = null;
+        try {
+            // 目标方法执行
+            response = pjp.proceed();
+        } catch (Throwable throwable) {
+            throw new Exception(throwable);
+        } 
+        LOGGER.info("log");
+        return response;
+    }
+}
+```
+
+#### 通过Event异步解耦
+
+很多时候，一个单据状态的改变，要触发很多下游的行为，举个例子：
+
+订单从确认订单变为支付成功，就要触发物流的发货，财务的记账，edm触达等等。但是如果订单状态改变同步触发下游的动作，这样对订单业务非常不友好，下游的每次变动都需要上游感知。所以，对于这种情况，我们就需要Event异步解藕。
+
+具体说就是订单状态改变后，可以发出来一个Event事件，下游只感知这个Event事件，如果监听到这个事件，就去做自己对应的业务处理。如下代码所示：
+
+```java
+// 调用
+@Component
+public class OrderService {
+    @Autowired
+    private ApplicationEventPublisher publisher;
+    public void payFinished() {
+        PayFinishedEvent springEvent = new PayFinishedEvent();
+        publisher.publishEvent(springEvent);
+    }
+}
+// 监听
+@Component
+public class BillListener {
+    @EventListener
+    public void onListenPayFinished(PayFinishedEvent event) {
+        // 记账
+    }
+}
+@Component
+public class EdmListener {
+    @EventListener
+    public void onListenPayFinished(PayFinishedEvent event) {
+        // 发送站内信
+    }
+}
+```
+
+## Spring中用到了哪些设计模式
+
+Spring有着非常优雅的设计，很多地方都遵循SOLID原则，里面的设计模式更是数不胜数。大概有以下几种：
+
+### 工厂模式
+
+所谓的工厂模式，核心是屏蔽内部的实现，直接由client使用即可。
+
+Spring的IOC就是一个非常好的工厂模式的例子。Spring IOC 容器就像是一个工厂一样，当我们需要创建一个对象的时候，只需要配置好配置文件/注解即可，完全不用考虑对象是如何被创建出来的。 IOC 容器负责创建对象，将对象连接在一起，配置这些对象，并从创建中处理这些对象的整个生命周期，直到它们被完全销毁。
+
+### 适配器模式
+
+适配器模式简而言之就是上游为了适应下游，而要做一些适配，承担适配工作的模块，就叫做适配器。常见的场景是甲方因为话语权很高，提供了一套交互模型，而所有对接甲方模型的乙方，就需要通过适配器模式来适配甲方的模型和自己已有的系统。
+
+在SpringMVC中，HandlerAdapter就是典型的适配器模式。参考其注释我们可以发现：
+
+对于DispatcherServlet来说，HandlerAdapter是核心的业务逻辑处理流程，DispatcherServlet只负责调用HandlerAdapter#handle方法即可。至于当前Http的请求该如何处理，则交给HandlerAdapter的实现方负责。换句话说，HandlerAdapter只是定义了和DispatcherServlet交互的标准，帮助不同的实现适配了DispatcherServlet而已。
+
+譬如，用于Controller注解解析和url映射的逻辑就是通过RequestMappingHandlerAdapter实现的。
+
+```java
+protected void doDispatch(HttpServletRequest request, HttpServletResponse response) throws Exception {
+    try {
+        ModelAndView mv = null;
+        Exception dispatchException = null;
+        try {
+            // Determine handler for the current request.
+            mappedHandler = getHandler(processedRequest);
+            // Determine handler adapter for the current request.
+            HandlerAdapter ha = getHandlerAdapter(mappedHandler.getHandler());
+            // Process last-modified header, if supported by the handler.
+            String method = request.getMethod();
+            if (!mappedHandler.applyPreHandle(processedRequest, response)) {
+                return;
+            }
+            // Actually invoke the handler. 【重要】
+            mv = ha.handle(processedRequest, response, mappedHandler.getHandler());
+        }
+        catch (Exception ex) {
+            dispatchException = ex;
+        }
+        catch (Throwable err) {
+            // As of 4.3, we're processing Errors thrown from handler methods as well,
+            // making them available for @ExceptionHandler methods and other scenarios.
+            dispatchException = new NestedServletException("Handler dispatch failed", err);
+        }
+        processDispatchResult(processedRequest, response, mappedHandler, mv, dispatchException);
+    }
+    catch (Exception ex) {
+    }
+    finally {
+    }
+}
+```
+
+### 代理模式
+
+代理模式和适配器模式的核心区别就在于，适配器模式的目的是为了适配不同的场景，而代理模式的目的则是enhance，即增强被代理的类（如增加日志打印功能等）。Spring的AOP就是代理模式的典型代表。
+
+### 单例模式
+
+单例模式是Spring一个非常核心的功能，Spring中的bean默认都是单例的，这样可以尽最大程度保证对象的复用和线程安全。
+
+Spring Bean也不止是单例的，还有其他作用域，如下：
+
+- prototype : 每次获取都会创建一个新的 bean 实例。也就是说，连续 getBean() 两次，得到的是不同的 Bean 实例。
+
+- request （仅 Web 应用可用）: 每一次 HTTP 请求都会产生一个新的 bean（请求 bean），该 bean 仅在当前 HTTP request 内有效。
+
+- session （仅 Web 应用可用） : 每一次来自新 session 的 HTTP 请求都会产生一个新的 bean（会话 bean），该 bean 仅在当前 HTTP session 内有效。
+
+- global-session （仅 Web 应用可用）：每个 Web 应用在启动时创建一个 Bean（应用 Bean），该 bean 仅在当前应用启动时间内有效。
+
+- websocket （仅 Web 应用可用）：每一次 WebSocket 会话产生一个新的 bean。
+
+### 模板方法模式
+
+如果使用过Spring的事务管理，相信一定对TransactionTemplate这个类不陌生，而且顾名思义，这个也是用到了模板方法。它把事务操作按照3个固定步骤来写：
+
+1. 执行业务逻辑
+
+2. 如果异常则回滚事务
+
+3. 否则提交事务
+
+如下代码所示：
+
+```java
+public <T> T execute(TransactionCallback<T> action) throws TransactionException {
+    TransactionStatus status = this.transactionManager.getTransaction(this);
+    T result;
+    try {
+        // 1. 步骤一，执行事务逻辑
+        result = action.doInTransaction(status);
+    }
+    catch (RuntimeException | Error ex) {
+        // Transactional code threw application exception -> rollback
+        rollbackOnException(status, ex);
+        throw ex;
+    }
+    catch (Throwable ex) {
+        // Transactional code threw unexpected exception -> rollback
+        rollbackOnException(status, ex);
+        throw new UndeclaredThrowableException(ex, "TransactionCallback threw undeclared checked exception");
+    }
+    // 2. 步骤三，提交事务
+    this.transactionManager.commit(status);
+    return result;
+
+}
+```
+
+### 责任链模式
+
+对于SpringMVC来说，他会通过一系列的拦截器来处理请求执行前，执行后，以及结束的response，核心的类是handlerExecutionChain，它封装了HandlerAdapter和一系列的过滤器。
+
+对于执行前的处理来说，DispatherServlet会先通过handlerExecutionChain获取所有的HandlerInterceptor，然后再执行处理逻辑，如下代码所示：
+
+```java
+protected void doDispatch(HttpServletRequest request, HttpServletResponse response) throws Exception {
+    try {
+        try {
+            // Process last-modified header, if supported by the handler.
+            String method = request.getMethod();
+            // 执行预处理
+            if (!mappedHandler.applyPreHandle(processedRequest, response)) {
+                return;
+            }
+        }
+        processDispatchResult(processedRequest, response, mappedHandler, mv, dispatchException);
+    }
+    catch (Exception ex) {
+    }
+    finally {
+    }
+}
+```
+
+```java
+boolean applyPreHandle(HttpServletRequest request, HttpServletResponse response) throws Exception {
+    HandlerInterceptor[] interceptors = getInterceptors();
+    if (!ObjectUtils.isEmpty(interceptors)) {
+        for (int i = 0; i < interceptors.length; i++) {
+            HandlerInterceptor interceptor = interceptors[i];
+            if (!interceptor.preHandle(request, response, this.handler)) {
+                triggerAfterCompletion(request, response, null);
+                return false;
+            }
+            this.interceptorIndex = i;
+        }
+    }
+    return true;
+}
+```
+
+## SpringMVC是如何将不同的Request路由到不同Controller中的？
+
+在计算机程序处理中，但凡涉及到路由，那包含到的数据结构一定是和map相关的。所以对于url和controller之间的映射，如果交给我们来设计的话，可能会用一个大的map将url和controller中对应的方法作为键值对存储起来，以此来达到路由的目的。
+
+对于Spring MVC的流程中来说，当http请求进入tomcat并在HttpServlet中处理的时候，首先会解析http request中的数据，以此来拿到对应的HandlerMethod（HandlerMethod封装了对应的Method和持有它的Bean）。明白了这一层，本问题就会从不同的request如何路由到不同的Controller变为不同的request如何拿到对应的HandlerMethod。
+
+Spring MVC在启动的时候，会把带有@RequestMapping注解的方法和类封装成一个RequestMappingInfo和HandlerMethod，然后注册到MappingRegistry。当HttpServletRequest访问时，会通过AbstractHandlerMethodMapping#lookupHandlerMethod方法获取对应的HandlerMethod，核心代码如下：
+
+```java
+protected HandlerMethod lookupHandlerMethod(String lookupPath, HttpServletRequest request) throws Exception {
+    List<Match> matches = new ArrayList<>();
+    // 先通过url获取到对应的RequestMappingInfo集合
+    List<T> directPathMatches = this.mappingRegistry.getMappingsByDirectPath(lookupPath);
+    if (directPathMatches != null) {
+        // 把RequestMappingInfo和HandlerMethod放到match里面
+        addMatchingMappings(directPathMatches, matches, request);
+    }
+    if (matches.isEmpty()) {
+        addMatchingMappings(this.mappingRegistry.getRegistrations().keySet(), matches, request);
+    }
+    if (!matches.isEmpty()) {
+        Match bestMatch = matches.get(0);
+        // 如果匹配到多个Match（譬如url相同但是方法不同），则通过RequestMappingInfo中的各种condition匹配出对应的bestMatch
+        if (matches.size() > 1) {
+        }
+        // 获取match中的HandlerMethod
+        return bestMatch.getHandlerMethod();
+    }
+    else {
+        return handleNoMatch(this.mappingRegistry.getRegistrations().keySet(), lookupPath, request);
+    }
+}
+```
+
+要知道，一个http请求中，携带有不同的信息，如url，method，header等等，SpringMVC通过Match类统一封装所有的RequestMappingInfo中的各种condition，同时利用compare方法，直接比较出最优的那个handlerMethod。同时，不管是RequestMappingInfo和其组合的各个condition都实现了RequestCondition接口，所以，这也符合组合模式的基本思想。
+
+我们知道，对于Http请求来说，tomcat执行了HttpServlet#service方法，继承了HttpServlet的FrameServlet则是执行doService方法，而SpringMVC的DispatcherServlet则是继承了FrameworkServlet，进入到SpringMVC的流程中，在DispatcherServlet中的流程如下：
+
+1. 先通过HandlerMapping拿到request对应的HandlerExecutionChain，然后再拿到HandlerExecutionChain中handler对应的HandlerAdapter，执行HandlerExecutionChain中interceptor#prehandle方法。（责任链模式）
+
+2. 再通过HandlerAdapter去执行handler，handler其实对应的是之前注册的HandlerMethod（handlerMethod里面封装的映射的真正方法 handler还有可能是原生的Servlet），所以要执行handler.invoke，不过在这之前要去判断参数，这一步需要参数解析器HandlerMethodArgumentResolver。反射调用完之后，需要调用返回值解析器HandlerMethodReturnValueHanlder（适配器模式&组合模式&策略模式）
+
+3. 真正方法执行完了之后，再执行HandlerExecutionChain中interceptor#posthandle方法进行拦截器的后置处理。
+
+4. SpringMVC执行完之后返回的是ModelAndView，我们还需要对ModelAndView进行render，即把ModelAndView中的view渲染到response中
+
+5. 当发生异常时，会将异常拉到用户业务自己的异常处理方法中，这时也需要对参数和返回值进行custom，此时就需要用到HandlerExceptionResolver系列了。因为用户标记的@ExceptionHandler方法已经被ExceptionHandlerMethodResolver找到并且注册（key为对应异常，value为对应方法），只需要调用该方法就可以对异常进行处理，此时的方法调用和之前的handler几乎没有区别
+
+SpringMVC的执行流程图如下：
+
+![](./pic/Spring/SpringMVC执行流程图.png)
+
+## Spring Boot如何让你的bean在其他bean之前加载？
+
+面对这个问题的时候，读者朋友们可能会有点懵逼，但是我们回到Bean初始化的本质上来看，Bean初始化有两个时机：
+
+1. Spring容器主动去初始化该Bean
+
+2. 其他Bean依赖该Bean，该Bean会先被初始化
+
+从这两个出发点来思考解决问题方案的话，大概有如下几种方式：
+
+### 直接依赖某Bean
+
+如下代码所示：
+
+```java
+@Component
+public class A {
+    @Autowired
+    private B b;
+}
+```
+
+如上，在加载Bean A的时候，一定会先初始化Bean B
+
+### DependsOn注解
+
+对于应用之外的二方或者三方库来说，因为我们不能修改外部库的代码，如果想要二方库的Bean在初始化之前就初始化我们内部的某个bean，就不能用第一种直接依赖的方式，可以使用@DependsOn注解来完成，如下代码所示：
+
+```java
+@Configuration
+public class BeanOrderConfiguration {
+    @Bean
+    @DependsOn("beanB")
+    public BeanA beanA(){
+        return new BeanA();
+    }
+}
+```
+
+这里我们先注册了beanA，然后在beanA上显式声明需要先初始化beanB。此时Spring会按照我们的要求先初始化beanB，再初始化beanA。
+
+当然，DependsOn注解也可以作用在@Componet注解上面
+
+### BeanFactoryPostProcessor
+
+前两种方式只能对于特定的Bean生效，如果我们希望某个Bean在其他所有Bean加载之前就初始化，用前面两种方式显然是不合适的，我们这个时候，就需要从Spring容器的生命周期中去找方法。
+
+通过上面的参考文章我们可以知道，Spring的Bean在初始化之前，会通过BeanFactoryPostProcessor#postProcessBeanFactory对工厂进行处理，我们可以依赖这个特性，在此刻提前初始化我们需要的bean
+
+```java
+@Component
+public class PrimaryBeanProcessor implements BeanFactoryPostProcessor {
+    @Override
+    public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException {
+        PrimaryBean bean = beanFactory.getBean(PrimaryBean.class);
+        System.out.println(bean);
+    }
+}
+@Component
+public class PrimaryBean {
+    public PrimaryBean() {
+        System.out.println("init primary bean");
+    }
+    @Override
+    public String toString() {
+        return "PrimaryBean{aaa}";
+    }
+}
+```
+
+这个时候我们通过控制台发现，PrimaryBean的初始化等级会优于其他Bean，如下所示：
+
+```java
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+ :: Spring Boot ::                (v2.5.2)
+
+2023-05-21 14:32:09.499  INFO 59380 --- [           main] cn.wxxlamp.spring.boot.Main              : Starting Main using Java 1.8.0_291 on B-13CKQ05P-0131.local with PID 59380 (/Users/chenkai/code/test/target/classes started by chenkai in /Users/chenkai/code/test)
+2023-05-21 14:32:09.503  INFO 59380 --- [           main] cn.wxxlamp.spring.boot.Main              : No active profile set, falling back to default profiles: default
+init primary bean // 希望初始化的Bean
+PrimaryBean{aaa}
+aware applicationContext // 系统配置Bean
+initializingBean
+```
+
+### 踩坑陷阱
+
+Order只能控制在同一个Bean类型集合中初始化的Bean的顺序，不能控制不同Bean的初始化顺序，举个例子：
+
+```java
+@Component
+public class Container {
+
+	private final List<Bean> beanList;
+    
+    public Container(List<Bean> beanList) {
+        this.beanList = beanList;
+    }
+}
+@Order(1)
+@Component
+class BeanA implements Bean {}
+@Order(2)
+@Component
+class BeanB implements Bean {}
+```
+
+只有这里的beanList中BeanA才会先于BeanB初始化。
+
+## 如何统计一个Bean中的方法调用次数
+
+通过AOP即可实现，通过AOP对Bean进行代理，在每次执行方法前或者后进行几次计数统计。这个主要就是考虑好如何避免并发情况下不准，以及如何使用AOP实现代理。
+
+首先我们先自定义一个注解，有了这个注解之后，我们可以在想要统计的方法上加上这个注解：
+
+```java
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.METHOD)
+public @interface MethodCallCount {
+}
+```
+
+接下来定义一个切面，来对这个注解进行增强处理：
+
+```java
+@Aspect
+@Component
+public class MethodCallCounterAspect {
+	private Map<String, AtomicInteger> methodCallCountMap = new ConcurrentHashMap<>();
+    @Around("@annotation(com.sun.fileconverter.MethodCallCount)")
+    public Object facade(ProceedingJoinPoint pjp) throws Exception {
+        Method method = ((MethodSignature) pjp.getSignature()).getMethod();
+        String methodName = method.getName();
+        try{
+            return pjp.proceed();
+        } catch (Throwable e) {
+            //异常处理
+        } finally{
+            //计数+1
+            AtomicInteger counter = methodCallCountMap.computeIfAbsent(methodName, k -> new AtomicInteger(0));
+            counter.incrementAndGet();
+        }
+    }
+    public int getMethodCallCount(String methodName) {
+        AtomicInteger counter = methodCallCountMap.get(methodName);
+        return (counter != null) ? counter.get() : 0;
+    }
+}
+```
+
+有了以上注解和切面后，只需要在我们想要统计的方法上使用该注解就行了：
+
+```java
+@Service
+public class TestServiceImpl implements ITestService {
+    @MethodCallCount
+    @Override
+    public AjaxResponse test(TestRequest testRequest) {
+    }
+```
+
+以上，当test方法被调用时，就会自动统计调用次数。
+
+同时需要注意，这个统计结果只在内存中有效，如果应用发生重启，就会归零了。如果想要持久化保存，就需要考虑持久化存储了，如存在mysql或者redis中。
+
+## Springboot是如何实现自动配置的？
+
+Spring Boot会根据类路径中的jar包、类，为jar包里的类自动配置，这样可以极大的减少配置的数量。简单点说就是它会根据定义在classpath下的类，自动的给你生成一些Bean，并加载到Spring的Context中。
+
+SpringBoot通过Spring 的条件配置决定哪些bean可以被配置，将这些条件定义成具体的Configuration，然后将这些Configuration配置到spring.factories文件中（这种方式Springboot 2.7.0版本已不建议使用，最新的方式是使用 /META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports ）作为key: org.springframework.boot.autoconfigure.EnableAutoConfiguration的值
+
+这时候，容器在启动的时候，由于使用了EnableAutoConfiguration注解，该注解Import的EnableAutoConfigurationImportSelector会去扫描classpath下的所有spring.factories文件，然后进行bean的自动化配置：
+
+![](./pic/Spring/Spring自动装配bean.png)
+
+### 条件化配置
+
+假设你希望一个或多个bean只有在某种特殊的情况下才需要被创建，比如，一个应用同时服务于中美用户，要在中美部署，有的服务在美国集群中需要提供，在中国集群中就不需要提供。在Spring 4之前，要实现这种级别的条件化配置是比较复杂的，但是，Spring 4引入了一个新的@Conditional注解可以有效的解决这类问题。
+
+```java
+@Bean
+@Conditional(ChinaEnvironmentCondition.class)
+public ServiceBean serviceBean(){
+    return new ServiceBean();
+}
+```
+
+当@Conditional(ChinaEnvironmentCondition.class)条件的值为true的时候，该ServiceBean才会被创建，否则该bean就会被忽略。@Conditional指定了一个条件。他的条件的实现是一个Java类——ChinaEnvironmentCondition，要实现以上功能就要定义ChinaEnvironmentCondition类，并继承Condition接口并重写其中的matches方法。
+
+```java
+class ChinaEnvironmentCondition implements Condition{
+    public final boolean matches(ConditionContext context, AnnotatedTypeMetadata metadata) {
+        Environment env = context.getEnvironment();
+        return env.containProperty("ENV_CN");
+    }
+}
+```
+
+在上面的代码中，matches方法的内容比较简单，他通过给定的ConditionContext对象进而获取Environment对象，然后使用该对象检查环境中是否存在ENV_CN属性。如果存在该方法则直接返回true，反之返回false。当该方法返回true的时候，就符合了@Conditional指定的条件，那么ServiceBean就会被创建。反之，如果环境中没有这个属性，那么这个ServiceBean就不会被创建。
+
+除了可以自定义一些条件之外，Spring 4本身提供了很多已有的条件供直接使用，如：
+
+```java
+@ConditionalOnBean
+@ConditionalOnClass
+@ConditionalOnExpression
+@ConditionalOnMissingBean
+@ConditionalOnMissingClass
+@ConditionalOnNotWebApplication
+```
+
+### Spring Boot应用的启动入口
+
+自动配置充分的利用了spring 4.0的条件化配置特性，那么，Spring Boot是如何实现自动配置的？Spring 4中的条件化配置又是怎么运用到Spring Boot中的呢？这要从Spring Boot的启动类说起。Spring Boot应用通常有一个名为*Application的入口类，入口类中有一个main方法，这个方法其实就是一个标准的Java应用的入口方法。一般在main方法中使用SpringApplication.run()来启动整个应用。值得注意的是，这个入口类要使用@SpringBootApplication注解声明。@SpringBootApplication是Spring Boot的核心注解，他是一个组合注解。
+
+```java
+@Target({ElementType.TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+@Inherited
+@SpringBootConfiguration
+@EnableAutoConfiguration
+@ComponentScan(
+    excludeFilters = {@Filter(
+    type = FilterType.CUSTOM,
+    classes = {TypeExcludeFilter.class}
+), @Filter(
+    type = FilterType.CUSTOM,
+    classes = {AutoConfigurationExcludeFilter.class}
+)}
+)
+public @interface SpringBootApplication {
+    // 略
+}
+```
+
+@SpringBootApplication是一个组合注解，它主要包含@SpringBootConfiguration、@EnableAutoConfiguration等几个注解。也就是说可以直接在启动类中使用这些注解来代替@ SpringBootApplication注解。 关于Spring Boot中的Spring自动化配置主要是@EnableAutoConfiguration的功劳。该注解可以让Spring Boot根据类路径中的jar包依赖为当前项目进行自动配置。
+
+至此，我们知道，Spring Boot的自动化配置主要是通过@EnableAutoConfiguration来实现的，因为我们在程序的启动入口使用了@SpringBootApplication注解，而该注解中组合了@EnableAutoConfiguration注解。所以，在启动类上使用@EnableAutoConfiguration注解，就会开启自动配置。
+
+那么，本着刨根问底的原则，当然要知道@EnableAutoConfiguration又是如何实现自动化配置的，因为目前为止，我们还没有发现Spring 4中条件化配置的影子。
+
+### EnableAutoConfiguration
+
+其实Spring框架本身也提供了几个名字为@Enable开头的Annotation定义。比如@EnableScheduling、@EnableCaching、@EnableMBeanExport等，@EnableAutoConfiguration的理念和这些注解其实是一脉相承的。
+
+1. @EnableScheduling是通过@Import将Spring定时任务框架相关的bean定义都加载到IoC容器。
+
+2. @EnableMBeanExport是通过@Import将JMX相关的bean定义加载到IoC容器。
+
+3. @EnableAutoConfiguration也是借助@Import的帮助，将所有符合自动配置条件的bean定义加载到IoC容器。
+
+下面是EnableAutoConfiguration注解的源码：
+
+```java
+@Target({ElementType.TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+@Inherited
+@AutoConfigurationPackage
+@Import({EnableAutoConfigurationImportSelector.class})
+public @interface EnableAutoConfiguration {
+    //略
+}
+```
+
+观察@EnableAutoConfiguration可以发现，这里Import了EnableAutoConfigurationImportSelector，这就是Spring Boot自动化配置的“始作俑者”。
+
+至此，我们知道，由于我们在Spring Boot的启动类上使用了@SpringBootApplication注解，而该注解组合了@EnableAutoConfiguration注解，@EnableAutoConfiguration是自动化配置的“始作俑者”，而@EnableAutoConfiguration中Import了EnableAutoConfigurationImportSelector类，该注解的内部实现已经很接近我们要找的“真相”了。
+
+### EnableAutoConfigurationImportSelector
+
+EnableAutoConfigurationImportSelector的源码在这里就不贴了，感兴趣的可以直接去看一下，其实实现也比较简单，主要就是使用Spring 4 提供的的SpringFactoriesLoader工具类。通过SpringFactoriesLoader.loadFactoryNames()读取了ClassPath下面的META-INF/spring.factories文件。
+
+这里要简单提一下spring.factories文件，它是一个典型的java properties文件，配置的格式为Key = Value形式。
+
+EnableAutoConfigurationImportSelector通过读取spring.factories中的key为org.springframework.boot.autoconfigure.EnableAutoConfiguration的值。如spring-boot-autoconfigure-1.5.1.RELEASE.jar中的spring.factories文件包含以下内容：
+
+```java
+# Auto Configure
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+org.springframework.boot.autoconfigure.admin.SpringApplicationAdminJmxAutoConfiguration,\
+org.springframework.boot.autoconfigure.aop.AopAutoConfiguration,\
+org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration,\
+org.springframework.boot.autoconfigure.batch.BatchAutoConfiguration,\
+org.springframework.boot.autoconfigure.cache.CacheAutoConfiguration,\
+org.springframework.boot.autoconfigure.cassandra.CassandraAutoConfiguration,\
+org.springframework.boot.autoconfigure.cloud.CloudAutoConfiguration,\
+......
+org.springframework.boot.autoconfigure.webservices.WebServicesAutoConfiguration
+```
+
+上面的EnableAutoConfiguration配置了多个类，这些都是Spring Boot中的自动配置相关类；在启动过程中会解析对应类配置信息。每个Configuration都定义了相关bean的实例化配置。都说明了哪些bean可以被自动配置，什么条件下可以自动配置，并把这些bean实例化出来。
+
+如果我们新定义了一个starter的话，也要在该starter的jar包中提供 spring.factories文件，并且为其配置org.springframework.boot.autoconfigure.EnableAutoConfiguration对应的配置类。
+
+### Configuration
+
+我们从spring-boot-autoconfigure-1.5.1.RELEASE.jar中的spring.factories文件随便找一个Configuration，看看他是如何自动加载bean的。
+
+```java
+@Configuration
+@AutoConfigureAfter({JmxAutoConfiguration.class})
+@ConditionalOnProperty(
+    prefix = "spring.application.admin",
+    value = {"enabled"},
+    havingValue = "true",
+    matchIfMissing = false
+)
+public class SpringApplicationAdminJmxAutoConfiguration {
+    @Bean
+    @ConditionalOnMissingBean
+    public SpringApplicationAdminMXBeanRegistrar springApplicationAdminRegistrar() throws MalformedObjectNameException {
+        String jmxName = this.environment.getProperty("spring.application.admin.jmx-name", "org.springframework.boot:type=Admin,name=SpringApplication");
+        if(this.mbeanExporter != null) {
+            this.mbeanExporter.addExcludedBean(jmxName);
+        }
+
+        return new SpringApplicationAdminMXBeanRegistrar(jmxName);
+    }
+}
+```
+
+看到上面的代码，终于找到了我们要找的东西——Spring 4的条件化配置。上面SpringApplicationAdminJmxAutoConfiguration在决定对哪些bean进行自动化配置的时候，使用了两个条件注解：ConditionalOnProperty和ConditionalOnMissingBean。只有满足这种条件的时候，对应的bean才会被创建。这样做的好处是什么？这样可以保证某些bean在没满足特定条件的情况下就可以不必初始化，避免在bean初始化过程中由于条件不足，导致应用启动失败。

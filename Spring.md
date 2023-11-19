@@ -2592,7 +2592,7 @@ curl -X POST http://localhost:8080/actuator/shutdown
 @SpringBootApplication
 public class Application {
     public static void main(String[] args) {
-    	SpringApplication.run(Application.class, args);  也可简化调用静态方法
+        SpringApplication.run(Application.class, args);  也可简化调用静态方法
     }
 }
 ```
@@ -2835,50 +2835,50 @@ private void prepareContext(ConfigurableApplicationContext context, Configurable
 ```java
 @Override
 public void refresh() throws BeansException, IllegalStateException {
-	synchronized (this.startupShutdownMonitor) {
-		// 为刷新操作准备此上下文
-		prepareRefresh();
-		// 告诉子类刷新内部 bean 工厂
-		ConfigurableListableBeanFactory beanFactory = obtainFreshBeanFactory();
-		// 为在此上下文中使用做好 bean 工厂的准备工作
-		prepareBeanFactory(beanFactory);
-		try {
-			// 允许在上下文子类中对 bean 工厂进行后处理
-			postProcessBeanFactory(beanFactory);
-			// 调用在上下文中注册为 bean 的工厂处理器
-			invokeBeanFactoryPostProcessors(beanFactory);
-			// 注册拦截 bean 创建的 bean 处理器
-			registerBeanPostProcessors(beanFactory);
-			// 初始化此上下文的消息源
-			initMessageSource();
-			// 初始化此上下文的事件多播器
-			initApplicationEventMulticaster();
-			// 在特定上下文子类中初始化其他特殊 bean
-			onRefresh();
-			// 检查监听器 bean 并注册它们
-			registerListeners();
-			// 实例化所有剩余的（非懒加载）单例
-			finishBeanFactoryInitialization(beanFactory);
-			// 最后一步：发布相应的事件
-			finishRefresh();
-		}
-		catch (BeansException ex) {
-			if (logger.isWarnEnabled()) {
-				logger.warn("Exception encountered during context initialization - " +
-						"cancelling refresh attempt: " + ex);
-			}
-			// 销毁已经创建的单例以避免悬挂资源
-			destroyBeans();
-			// 重置“激活”标志
-			cancelRefresh(ex);
-			// 将异常传播给调用者
-			throw ex;
-		}
-		finally {
-			// 在 Spring 的核心中重置常见的内省缓存，因为我们可能不再需要单例 bean 的元数据...
-			resetCommonCaches();
-		}
-	}
+    synchronized (this.startupShutdownMonitor) {
+        // 为刷新操作准备此上下文
+        prepareRefresh();
+        // 告诉子类刷新内部 bean 工厂
+        ConfigurableListableBeanFactory beanFactory = obtainFreshBeanFactory();
+        // 为在此上下文中使用做好 bean 工厂的准备工作
+        prepareBeanFactory(beanFactory);
+        try {
+            // 允许在上下文子类中对 bean 工厂进行后处理
+            postProcessBeanFactory(beanFactory);
+            // 调用在上下文中注册为 bean 的工厂处理器
+            invokeBeanFactoryPostProcessors(beanFactory);
+            // 注册拦截 bean 创建的 bean 处理器
+            registerBeanPostProcessors(beanFactory);
+            // 初始化此上下文的消息源
+            initMessageSource();
+            // 初始化此上下文的事件多播器
+            initApplicationEventMulticaster();
+            // 在特定上下文子类中初始化其他特殊 bean
+            onRefresh();
+            // 检查监听器 bean 并注册它们
+            registerListeners();
+            // 实例化所有剩余的（非懒加载）单例
+            finishBeanFactoryInitialization(beanFactory);
+            // 最后一步：发布相应的事件
+            finishRefresh();
+        }
+        catch (BeansException ex) {
+            if (logger.isWarnEnabled()) {
+                logger.warn("Exception encountered during context initialization - " +
+                        "cancelling refresh attempt: " + ex);
+            }
+            // 销毁已经创建的单例以避免悬挂资源
+            destroyBeans();
+            // 重置“激活”标志
+            cancelRefresh(ex);
+            // 将异常传播给调用者
+            throw ex;
+        }
+        finally {
+            // 在 Spring 的核心中重置常见的内省缓存，因为我们可能不再需要单例 bean 的元数据...
+            resetCommonCaches();
+        }
+    }
 }
 ```
 

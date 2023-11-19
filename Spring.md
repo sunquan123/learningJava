@@ -249,6 +249,87 @@ Spring AOP默认使用标准的JDK动态代理进行AOP代理。这使得任何�
 
 所以Spring AOP就使用CGLIB代理没有接口的类。
 
+## Spring AOP在什么场景下会失效？
+
+首先，Spring的AOP其实是通过动态代理实现的，所以，想要让AOP生效，前提必须是动态代理生效，并且可以调用到代理对象的方法。
+
+什么情况下会不走代理对象的调用呢？
+
+首先就是类内部的调用，比如一些私有方法调用，内部类调用，以及同一个类中方法的自调用等。如：
+
+```java
+//1
+public class MyService {
+    public void doSomething() {
+        doInternal(); // 自调用方法
+    }
+
+    public void doInternal() {
+        System.out.println("Doing internal work...");
+    }
+}
+
+//2
+public class MyService {
+    public void doSomething() {
+        doInternal(); // 自调用私有方法
+    }
+
+    private void doInternal() {
+        System.out.println("Doing internal work...");
+    }
+}
+
+
+//3
+public class OuterClass {
+    private class InnerClass {
+        public void doSomething() {
+            System.out.println("Doing something in inner class...");
+        }
+    }
+
+    public void invokeInnerClassMethod() {
+        InnerClass innerClass = new InnerClass();
+        innerClass.doSomething(); // 调用内部类方法
+    }
+}
+```
+
+以上，都是因为在对象内部直接调用其他方法，就会用原始对象直接调用了，不会调用到代理对象，所以代理会失效。
+
+类似的还有一种情况，虽然不是对象的自调用，但是他也是因为没有调用到代理对象，那就是调用static方法，因为静态方法是属于这个类的，并不是对象的，所以无法被AOP。
+
+```java
+public class MyService {
+    public staic void doSomething() {
+        // static 方法
+    }
+}
+```
+
+还有一种方法，也无法被代理，那就是final方法，由于AOP是通过创建代理对象来实现的，而无法对final方法进行子类化和覆盖，所以无法拦截这些方法。
+
+```java
+public class MyService {
+    public final void doSomethingFinal() {
+        System.out.println("Doing something final...");
+    }
+}
+```
+
+所以，那么总结一下就是以下几种情况，会导致代理失效，AOP不起作用：
+
+1. 私有方法调用
+
+2. 静态方法调用
+
+3. final方法调用
+
+4. 类内部自调用
+
+5. 内部类方法调用
+
 ## Spring Bean的生命周期是什么样的？
 
 一个Spring的Bean从出生到销毁的全过程就是他的整个生命周期，那么经历以下几个阶段：
@@ -950,13 +1031,17 @@ BeanPostProcessor是Spring IOC容器给我们提供的一个扩展接口，他�
 
 ##### @PostConstruct注解标注的初始化方法就是在这里反射调用完成的
 
+@PostConstruct 是javax.annotation 包中的注解(Spring Boot 3.0之后jakarta.annotation中，用于在构造函数执行完毕并且依赖注入完成后执行特定的初始化方法。标注在方法上，表示这个方法将在Bean初始化阶段被调用。
+
 #### afterPropertiesSet方法
+
+afterPropertiesSet 是 Spring 的 InitializingBean 接口中的方法。如果一个 Bean 实现了 InitializingBean 接口，Spring 在初始化阶段会调用该接口的 afterPropertiesSet 方法。
 
 InitializingBean接口的afterPropertiesSet方法被各种组件使用，无论是Spring内置的组件还是外部的组件集成到Spring中，有很多实现类实现了InitializingBean接口，用来完成bean初始化的这一阶段操作。
 
 #### 自定义初始化方法
 
-@Bean(initMethod = "initMethod")是Spring提供给我们的指定一个bean的初始化方法的入口。具体实现逻辑在invokeCustomInitMethod方法里：
+@Bean(initMethod = "initMethod")是Spring提供给我们的指定一个bean的初始化方法的入口（也可以在Spring配置文件XML中指定）。具体实现逻辑在invokeCustomInitMethod方法里：
 
 ```java
 protected void invokeCustomInitMethod(String beanName, Object bean, RootBeanDefinition mbd)
@@ -1147,38 +1232,6 @@ class ServiceA {
     }
 }
 ```
-
-## Spring 6.0和SpringBoot 3.0有什么新特性？
-
-Spring在2022年相继推出了Spring Framework 6.0和SpringBoot 3.0，Spring把这次升级称之为新一代框架的开始，下一个10年的新开端
-
-主要更新内容是以下几个：  
-
-- A Java 17 baseline
-
-- Support for Jakarta EE 10 with an EE 9 baseline
-
-- Support for generating native images with GraalVM, superseding the experimental Spring Native project
-
-- Ahead-Of-Time transformations and the corresponding AOT processing support for Spring application contexts
-
-首先，前两个比较容易理解，主要说的是依赖的服务的版本升级的信息，那就是Spring Framework 6.0和SpringBoot 3.0都要求JDK的版本最低也得是JDK 17；并且底层依赖的J2EE也迁移到了Jakarta EE 9。
-
-### AOT编译
-
-Ahead-Of-Time，即预先编译，这是相对于我们熟知的Just-In-Time（JIT，即时编译）来说的。
-
-相比于JIT编译，AOT指的是在程序运行前编译，这样就可以避免在运行时的编译性能消耗和内存消耗，可以在程序运行初期就达到最高性能、也可以显著的加快程序的启动。
-
-AOT的引入，意味着Spring生态正式引入了提前编译技术，相比于JIT编译，AOT有助于优化Spring框架启动慢、占用内存多、以及垃圾无法被回收等问题。
-
-### Spring Native
-
-在Spring的新版本中引入了Spring Native。
-
-有了Spring Native ，Spring可以不再依赖Java虚拟机，而是基于 GraalVM 将 Spring 应用程序编译成原生镜像（native image），提供了一种新的方式来部署 Spring 应用。这种部署Spring的方式是云原生友好的。
-
-Spring Native的优点是编译出来的原生 Spring 应用可以作为一个独立的可执行文件进行部署，而不需要安装JVM，而且启动时间非常短、并且有更少的资源消耗。他的缺点就是构建时长要比JVM更长一些，且不支持一些动态代理功能。
 
 ## Spring的事务传播机制有哪些？
 
@@ -1434,6 +1487,20 @@ public interface FactoryBean<T> {
 Spring通过反射机制利用bean的class属性指定的实现类来实例化bean 。在某些情况下，实例化bean过程比较复杂，如果按照传统的方式，则需要在定义bean的地方提供大量的配置信息，配置方式的灵活性是受限的，这时采用编码的方式可能会得到更好的效果。Spring为此提供了一个org.Springframework.beans.factory.FactoryBean的工厂类接口，用户可以通过实现该接口定制实例化bean的逻辑。
 
 Spring框架本身就自带了实现FactoryBean的70多个类，如ProxyFactoryBean、MapFactoryBean、PropertiesFactoryBean等。
+
+## Spring中@Service 、@Component、@Repository等注解区别是什么？
+
+在Spring框架中，有很多用来声明Spring管理的bean的常用注解。它们都是@Component的特化形式，用于指定不同类型的组件，主要有以下几个：
+
+1. @Component：是一个通用的组件声明注解，表示该类是一个Spring组件。它可以用于任何Spring管理的组件。
+
+2. @Service：通常用于标记服务层的组件。虽然它本质上与@Component相同，但这个注解表示该类属于服务层，这有助于区分不同层次的组件。
+
+3. @Repository：用于标记数据访问层的组件，即DAO（Data Access Object）层。这个注解除了将类标识为Spring组件之外，还能让Spring为它提供一些持久化特定的功能，比如异常转换。
+
+4. @Controller：用于标记控制层的组件，特别是在Spring MVC中用于定义控制器类。这个注解通知Spring该类应当作为控制器处理HTTP请求。
+
+这些注解在Spring框架中的主要区别在于它们的语义意图，在功能上几乎没有差异！只是为了让我们识别出我们标注的Bean到底是个什么角色，是一个Service、还是一个Repository、又或者是一个Controller。
 
 ## Spring在业务中常见的使用方式
 
@@ -1830,6 +1897,293 @@ SpringMVC的执行流程图如下：
 
 ![](./pic/Spring/SpringMVC执行流程图.png)
 
+## 在Spring中如何使用Spring Event做事件驱动
+
+Spring Event是Spring框架中的一种事件机制，它允许不同组件之间通过事件的方式进行通信。Spring框架中的事件机制建立在观察者模式的基础上，允许应用程序中的组件注册监听器来监听特定类型的事件，并在事件发生时执行相应的操作。
+
+Spring Event的使用需要定义以下三个内容：
+
+1. 事件（Event）：事件是一个普通的Java对象，用于封装关于事件发生的信息。通常，事件类会包含一些数据字段，以便监听器能够获取事件的相关信息。
+
+2. 事件发布者（Event Publisher）：事件发布者是负责触发事件并通知所有注册的监听器的组件。
+
+3. 事件监听器（Event Listener）：事件监听器是负责响应特定类型事件的组件。它们实现了一个接口或者使用注解来标识自己是一个事件监听器，并定义了在事件发生时需要执行的逻辑。
+
+### 实现一个Spring Event
+
+假设我们在用户注册成功之后，需要发送一条欢迎短信，那么就可以通过事件来实现。
+
+首先定义一个Event，需要继承ApplicationEvent类。
+
+```java
+public class RegisterSuccessEvent extends ApplicationEvent {
+    public RegisterSuccessEvent(RegisterInfo registerInfo) {
+        super(registerInfo);
+    }
+}
+```
+
+在他的构造方法中，可以定义一个具体的事件内容。
+
+然后再定义一个事件的监听者：
+
+```java
+/**
+ * 案件中心内部事件监听器
+ *
+ */
+@Component
+public class RegisterEventListener {
+
+    @EventListener(RegisterSuccessEvent.class)
+    public void onApplicationEvent(RegisterSuccessEvent event) {
+        RegisterInfo registerInfo = (RegisterInfo) event.getSource();
+        //执行发送欢迎短信的逻辑
+    }
+}
+```
+
+以上这个监听器，在监听到一个RegisterSuccessEvent事件被发出来之后，会调用onApplicationEvent方法，我们就可以在这个方法中实现我们的发送欢迎短信的业务逻辑。
+
+有了监听者，那么发送者也需要定义：
+
+```java
+@Service
+public class RegisterService{
+  @Autowired
+  protected ApplicationContext applicationContext;
+    public RegisterResponse register(RegisterInfo registerInfo){
+        //用户注册核心代码
+      //发送一个注册完成的事件
+    applicationContext.publishEvent(new RegisterSuccessEvent(registerInfo));
+  }
+}
+```
+
+在我们的RegisterService中，我们在用户注册成功之后，调用applicationContext.publishEvent即可把我们的注册成功事件广播出去了。
+
+但是需要注意的是，默认情况下，Spring Event的调用时同步调用的。如果想要实现异步调用，也是支持的，最简单的方式就是借助@Async 注解：
+
+修改监听器，增加@Async 注解：
+
+```java
+/**
+ * 案件中心内部事件监听器
+ *
+ */
+@Component
+public class RegisterEventListener {
+    @EventListener(RegisterSuccessEvent.class)
+    @Async
+    public void onApplicationEvent(RegisterSuccessEvent event) {
+        RegisterInfo registerInfo = (RegisterInfo) event.getSource();
+        //执行发送欢迎短信的逻辑
+    }
+}
+```
+
+并且需要开启对异步的支持，需要在Application.java中增加@EnableAsync
+
+但是，一般来说我不建议大家直接用@Async，最好是自定义线程池来实现异步。
+
+### Spring Event带来的好处是什么
+
+1. 代码解耦：通过使用事件机制，组件之间不需要直接互相依赖，从而减少了代码之间的耦合度。这使得代码更易于维护和扩展。
+
+2. 职责清晰：事件机制有助于将应用程序拆分为更小的模块，每个模块只关心要做的事儿，和关心自己需要监听的事件就行了。
+
+3. 异步处理：Spring Event机制支持异步事件处理，这意味着可以将事件的处理分发到不同的线程，提高了系统的响应性。
+
+4. 一对多：Spring Event是观察者模式的一种实现，他的一个事件可以有多个监听者，所以当我们有多个模块之间需要通信时，可以直接发一个事件出去，让监听者各自监听即可。
+
+## 为什么不建议直接使用Spring的@Async
+
+@Async中关于线程池的使用部分在AsyncExecutionInterceptor中，在这个类中有一个getDefaultExecutor方法， 当我们没有做过自定义线程池的时候，就会用SimpleAsyncTaskExecutor这个线程池。
+
+```java
+@Override
+protected Executor getDefaultExecutor(BeanFactory beanFactory) {
+    Executor defaultExecutor = super.getDefaultExecutor(beanFactory);
+    return (defaultExecutor != null ? defaultExecutor : new SimpleAsyncTaskExecutor());
+}
+```
+
+SimpleAsyncTaskExecutor这玩意坑很大，其实他并不是真的线程池，它是不会重用线程的，每次调用都会创建一个新的线程，也没有最大线程数设置。并发大的时候会产生严重的性能问题。
+
+他的doExecute核心逻辑如下：
+
+```java
+/**
+     * Template method for the actual execution of a task.
+     * <p>The default implementation creates a new Thread and starts it.
+     * @param task the Runnable to execute
+     * @see #setThreadFactory
+     * @see #createThread
+     * @see java.lang.Thread#start()
+     */
+    protected void doExecute(Runnable task) {
+        Thread thread = (this.threadFactory != null ? this.threadFactory.newThread(task) : createThread(task));
+        thread.start();
+    }
+```
+
+所以，我们应该自定义线程池来配合@Async使用，而不是直接就用默认的。
+
+### 自定义线程池
+
+我们可以通过如下方式，自定义一个线程池：
+
+```java
+@Configuration
+@EnableAsync
+public class AsyncExecutorConfig {
+    @Bean("registerSuccessExecutor")
+    public Executor caseStartFinishExecutor() {
+        ThreadFactory namedThreadFactory = new ThreadFactoryBuilder()
+                .setNameFormat("registerSuccessExecutor-%d").build();
+        ExecutorService executorService = new ThreadPoolExecutor(100, 200,
+                0L, TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<Runnable>(1024), namedThreadFactory, new ThreadPoolExecutor.AbortPolicy());
+        return executorService;
+    }
+}
+```
+
+并且把他声明为@Configuration，然后也可以把Application.java中的 @EnableAsync放到这里。
+
+接下来在使用@Async的时候，指定一下即可：
+
+```java
+/**
+ * 案件中心内部事件监听器
+ *
+ */
+@Component
+public class RegisterEventListener {
+    @EventListener(RegisterSuccessEvent.class)
+     @Async("registerSuccessExecutor")
+    public void onApplicationEvent(RegisterSuccessEvent event) {
+        RegisterInfo registerInfo = (RegisterInfo) event.getSource();
+        //执行发送欢迎短信的逻辑
+    }
+}
+```
+
+在@Async中指定registerSuccessExecutor即可。这样在后续执行时，就会用到我们自定义的线程池了。
+
+## Spring中的事务事件如何使用？
+
+@TransactionalEventListener 是 Spring Framework 提供的一个注解，用于处理事务事件。它可以在事务提交前后（或回滚前后）触发事件监听器，以执行一些特定的操作。这个注解的使用场景是在需要基于事务状态执行后处理逻辑时非常有用。
+
+如以下是一个简单的例子：
+
+```java
+@Service
+public class UserService {
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
+    @Transactional
+    public void registerUser(User user) {
+        // 用户注册逻辑
+        // 发布用户注册事件
+        UserRegistrationEvent registrationEvent = new UserRegistrationEvent(user);
+        eventPublisher.publishEvent(registrationEvent);
+    }
+}
+
+@Component
+public class UserRegistrationEventListener {
+    @TransactionalEventListener
+    public void handleUserRegistrationEvent(UserRegistrationEvent event) {
+        // 事务成功提交后执行的逻辑
+        sendWelcomeEmail(event.getUser());
+    }
+    private void sendWelcomeEmail(User user) {
+        // 发送欢迎邮件
+    }
+}
+```
+
+在上面的示例中，UserRegistrationEvent 事件在用户注册成功后发布，然后 UserRegistrationEventListener 中的 handleUserRegistrationEvent 方法在事务成功提交后触发，发送欢迎邮件。
+
+TransactionalEventListener 默认只在成功提交的事务中触发事件监听器。如果需要在事务回滚后也触发，可以使用 phase 属性进行配置。
+
+phase 属性用于指定事件监听器的触发时机，它有四种不同的阶段，分别是 BEFORE_COMMIT、AFTER_COMMIT、AFTER_ROLLBACK 和 AFTER_COMPLETION。它们的区别如下：
+
+1. BEFORE_COMMIT：在事务提交前触发。事件监听器将在事务尚未提交时执行，这意味着它可以在事务内部进行回滚操作，如果事件监听器抛出异常，将导致事务回滚。这个阶段通常用于在事务即将提交前执行某些额外的逻辑。
+
+2. AFTER_COMMIT：在事务成功提交后触发。事件监听器将在事务已成功提交后执行，这意味着它不会影响事务的回滚。这个阶段通常用于执行那些不应该导致事务回滚的后处理操作，如发送通知或记录日志。
+
+3. AFTER_ROLLBACK：在事务回滚后触发。事件监听器将在事务回滚后执行，这通常用于清理或记录与事务回滚相关的操作。
+
+4. AFTER_COMPLETION：在事务完成（不管是提交还是回滚）后触发。事件监听器将在事务完成后执行，无论事务是否成功提交或回滚。这个阶段通常用于执行一些与事务状态无关的清理工作。
+
+## Spring中shutdownhook作用是什么？
+
+在Spring框架中，Shutdown Hook（关闭钩子）是一种机制，用于在应用程序关闭时执行一些清理操作。
+
+Spring会向JVM注册一个shutdown hook，在接收到关闭通知的时候，进行bean的销毁，容器的销毁处理等操作。
+
+在Spring框架中，可以使用使用AbstractApplicationContext类或其子类来注册Shutdown Hook。这些类提供了一个registerShutdownHook()方法，用于将Shutdown Hook与应用程序上下文关联起来。
+
+很多中间件的优雅上下线的功能（优雅停机），都是基于Spring的shutdown hook的机制实现的，比如Dubbo的优雅下线。
+
+还有我们经常在Spring中使用的以下两种方式，其实都是基于shutdown hook实现的。如：
+
+1. 实现DisposableBean接口，实现destroy方法：
+   
+   ```java
+   @Slf4j
+   @Component
+   public class ShutdownHook implements DisposableBean {
+     @Override
+     public void destroy() throws Exception {
+         // 清理资源
+     }
+   }
+   ```
+
+2. 使用@PreDestroy注解
+   
+   ```java
+   @Service
+   public class Bean {
+     @PreDestroy
+     public void cleanup() {
+         // 执行清理逻辑
+         System.out.println("Performing cleanup before bean destruction...");
+         // 关闭资源、释放连接等
+         // ...
+     }
+   }
+   ```
+
+3. 当然，我们也可以借助Spring的事件机制，来自己注册一个hook，如下：
+   
+   ```java
+   @Component
+   public class CloseListener implements ApplicationListener<ContextClosedEvent> {
+     @Override
+     public void onApplicationEvent(ContextClosedEvent event) {
+         // 做容器关闭之前的清理工作
+     }
+   }
+   ```
+
+可以实现ApplicationListener接口，监听 Spring 容器的关闭事件（ContextClosedEvent），来做一些特殊的处理。
+
+## SpringBoot和Spring的区别是什么？
+
+Spring是一个非常强大的企业级Java开发框架（Java的腾飞他居功至伟），提供了一系列模块来支持不同的应用需求，如依赖注入、面向切面编程、事务管理、Web应用程序开发等。而SpringBoot的出现，主要是起到了简化Spring应用程序的开发和部署，特别是用于构建微服务和快速开发的应用程序。
+
+相比于Spring，SpringBoot主要在这几个方面来提升了我们使用Spring的效率，降低开发成本：
+
+1. 自动配置：Spring Boot通过Auto-Configuration来减少开发人员的配置工作。我们可以通过依赖一个starter就把一坨东西全部都依赖进来，使开发人员可以更专注于业务逻辑而不是配置。
+
+2. 内嵌Web服务器：Spring Boot内置了常见的Web服务器（如Tomcat、Jetty），这意味着您可以轻松创建可运行的独立应用程序，而无需外部Web服务器。
+
+3. 约定大于配置：SpringBoot中有很多约定大于配置的思想的体现，通过一种约定的方式，来降低开发人员的配置工作。如他默认读取spring.factories来加载Starter、读取application.properties或application.yml文件来进行属性配置等。
+
 ## Spring Boot如何让你的bean在其他bean之前加载？
 
 面对这个问题的时候，读者朋友们可能会有点懵逼，但是我们回到Bean初始化的本质上来看，Bean初始化有两个时机：
@@ -1927,8 +2281,8 @@ Order只能控制在同一个Bean类型集合中初始化的Bean的顺序，不�
 @Component
 public class Container {
 
-	private final List<Bean> beanList;
-    
+    private final List<Bean> beanList;
+
     public Container(List<Bean> beanList) {
         this.beanList = beanList;
     }
@@ -1962,7 +2316,7 @@ public @interface MethodCallCount {
 @Aspect
 @Component
 public class MethodCallCounterAspect {
-	private Map<String, AtomicInteger> methodCallCountMap = new ConcurrentHashMap<>();
+    private Map<String, AtomicInteger> methodCallCountMap = new ConcurrentHashMap<>();
     @Around("@annotation(com.sun.fileconverter.MethodCallCount)")
     public Object facade(ProceedingJoinPoint pjp) throws Exception {
         Method method = ((MethodSignature) pjp.getSignature()).getMethod();
@@ -2158,3 +2512,501 @@ public class SpringApplicationAdminJmxAutoConfiguration {
 ```
 
 看到上面的代码，终于找到了我们要找的东西——Spring 4的条件化配置。上面SpringApplicationAdminJmxAutoConfiguration在决定对哪些bean进行自动化配置的时候，使用了两个条件注解：ConditionalOnProperty和ConditionalOnMissingBean。只有满足这种条件的时候，对应的bean才会被创建。这样做的好处是什么？这样可以保证某些bean在没满足特定条件的情况下就可以不必初始化，避免在bean初始化过程中由于条件不足，导致应用启动失败。
+
+## SpringBoot是如何实现main方法启动Web项目的？
+
+在Spring Boot中，通过SpringApplication类的静态方法run来启动Web项目。当我们在main方法中调用run方法时，Spring Boot使用一个内嵌的Tomcat服务器，并将其配置为处理Web请求。
+
+当应用程序启动时，Spring Boot会自动扫描应用程序中所有的Spring组件，并使用默认的配置来启动内嵌的Tomcat服务器。在默认情况下，Spring Boot会自动配置大部分的Web开发所需的配置，包括请求处理、视图解析、静态资源处理等。
+
+这样，在应用程序启动后，我们就可以通过Web浏览器访问应用程序了。例如，在默认情况下，可以通过访问http://localhost:8080 来访问应用程序的首页。
+
+除了默认的Tomcat之外，Spring Boot还支持内嵌Jetty和Undertow服务器。
+
+我们可以通过修改pom.xml文件中的依赖项来切换到其他的内嵌Web服务器。例如，如果我们想使用Undertow作为内嵌服务器，我们可以将以下依赖项添加到pom.xml文件中：
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-undertow</artifactId>
+</dependency>
+```
+
+除了修改依赖项之外，我们还可以通过在application.properties或application.yml文件中设置server属性来配置内嵌Web服务器。例如，如果我们想将端口号从默认的8080更改为9090，我们可以在application.properties文件中添加以下属性：
+
+```properties
+server.port=9090
+```
+
+除了端口号之外，我们还可以在这里设置其他的Web服务器属性，例如上下文路径、SSL证书等。更多有关配置内嵌Web服务器的信息，可以参考Spring Boot官方文档。
+
+## SpringBoot如何做优雅停机？
+
+在Web应用开发中，确保应用可以平稳可靠的关闭是至关重要的。在我们常用的Spring Boot中其实提供了内置功能来优雅地处理应用程序的关闭的能力。
+
+先说一下啥是优雅停机，其实他指的是以受控方式终止应用程序的过程，允许它完成任何正在进行的任务，释放资源，并确保数据的完整性。与突然终止应用程序不同，优雅停机确保所有进程都得到优雅停止，以防止潜在的数据损坏或丢失。
+
+从Spring Boot 2.3开始，SpringBoot内置了优雅停机的功能。想要启用优雅停机也非常简单，你只需在你的application.properties文件中添加配置项：
+
+```properties
+server.shutdown=graceful
+# 设置等待正在进行的请求处理完的最长时间
+spring.lifecycle.timeout-per-shutdown-phase=2m
+```
+
+通过这个设置，当你停止服务器时，它将不再接受新的请求。并且服务器也不会立即关闭，而是等待正在进行的请求处理完。这个等待的时间我们也可以自定义。默认的等待时长是30秒，我们通过以上配置可以将这个等待时长延长至2分钟。
+
+### Spring Boot Actuator通过HTTP请求进行优雅停机
+
+想要在Spring Boot Actuator中启用优雅停机，需要做如下配置。
+
+首先增加Maven依赖：
+
+```xml
+<dependency>
+  <groupId>org.springframework.boot</groupId>
+  <artifactId>spring-boot-starter-actuator</artifactId>
+</dependency>
+```
+
+然后增加配置项：
+
+```properties
+management.endpoints.web.exposure.include=*
+management.endpoint.shutdown.enabled=true
+```
+
+要优雅停机应用，可以使用HTTP POST请求来调用关闭端点。例如，可以使用curl命令或工具来发送POST请求：
+
+```shell
+curl -X POST http://localhost:8080/actuator/shutdown
+```
+
+当你发送POST请求到/actuator/shutdown时，应用将接收到关闭命令并开始进行优雅停机。应用会等待一段时间以完成正在进行的请求处理，然后关闭。
+
+## SpringBoot的启动流程是怎么样的？
+
+以下就是一个SpringBoot启动的入口，想要了解SpringBoot的启动过程，就从这里开始。
+
+```java
+@SpringBootApplication
+public class Application {
+    public static void main(String[] args) {
+    	SpringApplication.run(Application.class, args);  也可简化调用静态方法
+    }
+}
+```
+
+这里我们直接看重重点的SpringApplication.run(Application.class, args);方法。他的实现细节如下：
+
+```java
+public static ConfigurableApplicationContext run(Object source, String... args) {
+    return run(new Object[] { source }, args);
+}
+
+public static ConfigurableApplicationContext run(Object[] sources, String[] args) {
+    return new SpringApplication(sources).run(args);
+}
+```
+
+最终就是new SpringApplication(sources).run(args)这部分代码了。那么接下来就需要分两方面介绍SpringBoot的启动过程。一个是new SpringApplication的初始化过程，一个是SpringApplication.run的启动过程。
+
+### new SpringApplication()
+
+在SpringApplication的构造函数中，调用了一个initialize方法，所以他的初始化逻辑直接看这个initialize方法就行了。流程图及代码如下：
+
+![](./pic/Spring/SpringBoot启动逻辑1.png)
+
+```java
+public SpringApplication(Object... sources) {
+    initialize(sources);
+}
+private void initialize(Object[] sources) {
+    // 添加源：如果 sources 不为空且长度大于 0，则将它们添加到应用的源列表中
+    if (sources != null && sources.length > 0) {
+        this.sources.addAll(Arrays.asList(sources));
+    }
+    // 设置web环境：推断并设置 Web 环境（例如，检查应用是否应该运行在 Web 环境中）
+    this.webEnvironment = deduceWebEnvironment();
+    // 加载初始化器：设置 ApplicationContext 的初始化器，从 'spring.factories' 文件中加载 ApplicationContextInitializer 实现
+    setInitializers((Collection) getSpringFactoriesInstances(ApplicationContextInitializer.class));
+    // 设置监听器：从 'spring.factories' 文件中加载 ApplicationListener 实现
+    setListeners((Collection) getSpringFactoriesInstances(ApplicationListener.class));
+    // 确定主应用类：通常是包含 main 方法的类
+    this.mainApplicationClass = deduceMainApplicationClass();
+}
+```
+
+1. 添加源：将提供的源（通常是配置类）添加到应用的源列表中。
+
+2. 设置 Web 环境：判断应用是否应该运行在 Web 环境中，这会影响后续的 Web 相关配置。
+
+3. 加载初始化器：从 spring.factories 文件中加载所有列出的 ApplicationContextInitializer 实现，并将它们设置到 SpringApplication 实例中，以便在应用上下文的初始化阶段执行它们。
+
+4. 设置监听器：加载和设置 ApplicationListener 实例，以便应用能够响应不同的事件。
+
+5. 确定主应用类：确定主应用类，这个主应用程序类通常是包含 public static void main(String[] args) 方法的类，是启动整个 Spring Boot 应用的入口点。
+
+这里面第三步，加载初始化器这一步是Spring Boot的自动配置的核心，因为在这一步会从 spring.factories 文件中加载并实例化指定类型的类。
+
+具体实现的代码和流程如下：
+
+![](./pic/Spring/SpringBoot启动逻辑2.png)
+
+```java
+private <T> Collection<? extends T> getSpringFactoriesInstances(Class<T> type, Class<?>[] parameterTypes, Object... args) {
+    // 获取当前线程的上下文类加载器
+    ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+    // 从spring.factories加载指定类型的工厂名称，并使用LinkedHashSet确保名称的唯一性，以防重复
+    Set<String> names = new LinkedHashSet<String>(SpringFactoriesLoader.loadFactoryNames(type, classLoader));
+    // 创建指定类型的实例。这里使用反射来实例化类，并传入任何必要的参数
+    List<T> instances = createSpringFactoriesInstances(type, parameterTypes, classLoader, args, names);
+    // 对实例进行排序，这里使用的是Spring的注解感知比较器，可以处理@Order注解和Ordered接口
+    AnnotationAwareOrderComparator.sort(instances);
+    // 返回实例集合
+    return instances;
+}
+```
+
+以下就是new SpringApplication的主要流程，主要依赖initialize 方法初始化 Spring Boot 应用的关键组件和配置。
+
+![](./pic/Spring/SpringBoot启动逻辑3.png)
+
+这个过程确保了在应用上下文被创建和启动之前，所有关键的设置都已就绪，包括环境设置、初始化器和监听器的配置，以及主应用类的识别。
+
+### SpringApplication.run
+
+看完了new SpringApplication接下来就在看看run方法做了哪些事情。这个方法是 SpringApplication 类的核心，用于启动 Spring Boot 应用。
+
+![](./pic/Spring/SpringBoot启动逻辑4.png)
+
+```java
+public ConfigurableApplicationContext run(String... args) {
+    // 创建并启动一个计时器，用于记录应用启动耗时
+    StopWatch stopWatch = new StopWatch();
+    stopWatch.start();
+    ConfigurableApplicationContext context = null;
+    FailureAnalyzers analyzers = null;
+    // 配置无头（headless）属性，影响图形环境的处理
+    configureHeadlessProperty();
+    // 获取应用运行监听器，并触发开始事件
+    SpringApplicationRunListeners listeners = getRunListeners(args);
+    listeners.starting();
+    try {
+        // 创建应用参数对象
+        ApplicationArguments applicationArguments = new DefaultApplicationArguments(args);
+        // 准备环境，包括配置文件和属性源
+        ConfigurableEnvironment environment = prepareEnvironment(listeners, applicationArguments);
+        // 打印应用的 Banner
+        Banner printedBanner = printBanner(environment);
+        // 创建应用上下文
+        context = createApplicationContext();
+        // 创建失败分析器
+        analyzers = new FailureAnalyzers(context);
+        // 准备上下文，包括加载 bean 定义
+        prepareContext(context, environment, listeners, applicationArguments, printedBanner);
+        // 刷新上下文，完成 bean 的创建和初始化
+        refreshContext(context);
+        // 刷新后的后置处理
+        afterRefresh(context, applicationArguments);
+        // 通知监听器，应用运行完成
+        listeners.finished(context, null);
+        // 停止计时器
+        stopWatch.stop();
+        // 如果启用了启动信息日志，记录应用的启动信息
+        if (this.logStartupInfo) {
+            new StartupInfoLogger(this.mainApplicationClass).logStarted(getApplicationLog(), stopWatch);
+        }
+        // 返回配置好的应用上下文
+        return context;
+    }
+    catch (Throwable ex) {
+        // 处理运行失败的情况
+        handleRunFailure(context, listeners, analyzers, ex);
+        throw new IllegalStateException(ex);
+    }
+}
+```
+
+以上的过程太复杂了，我们挑几个关键的介绍一下他们的主要作用。
+
+#### 启动&停止计时器
+
+在代码中，用到stopWatch来进行及时。所以在最开始先要启动计时，在最后要停止计时。这个计时就是最终用来统计启动过程的时长的。最终在应用启动信息输出的实时打印出来，如以下内容：
+
+```log
+2023-11-18 09:00:05.789  INFO 12345 --- [           main] com.sun.myapp.Application            : Started Application in 6.666 seconds (JVM running for 7.789)
+```
+
+#### 获取和启动监听器
+
+这一步从spring.factories中解析初始所有的SpringApplicationRunListener 实例，并通知他们应用的启动过程已经开始。
+
+SpringApplicationRunListener 是 Spring Boot 中的一个接口，用于在应用的启动过程中的不同阶段提供回调。实现这个接口允许监听并响应应用启动周期中的关键事件。SpringApplicationRunListener 接口定义了多个方法，每个方法对应于启动过程中的一个特定阶段。这些方法包括：
+
+1. starting()：在运行开始时调用，此时任何处理都未开始，可以用于初始化在启动过程中需要的资源。
+
+2. environmentPrepared()：当 SpringApplication 准备好 Environment（但在创建 ApplicationContext 之前）时调用，这是修改应用环境属性的好时机。
+
+3. contextPrepared()：当 ApplicationContext 准备好但在它加载之前调用，可以用于对上下文进行一些预处理。
+
+4. contextLoaded()：当 ApplicationContext 被加载（但在它被刷新之前）时调用，这个阶段所有的 bean 定义都已经加载但还未实例化。
+
+5. started()：在 ApplicationContext 刷新之后、任何应用和命令行运行器被调用之前调用，此时应用已经准备好接收请求。
+
+6. running()：在运行器被调用之后、应用启动完成之前调用，这是在应用启动并准备好服务请求时执行某些动作的好时机。
+
+7. failed()：如果启动过程中出现异常，则调用此方法。
+
+#### 装配环境参数
+
+这一步主要是用来做参数绑定的，prepareEnvironment 方法会加载应用的外部配置。这包括 application.properties 或 application.yml 文件中的属性，环境变量，系统属性等。所以，我们自定义的那些参数就是在这一步被绑定的。
+
+打印Banner
+
+这一步的作用很简单，就是在控制台打印应用的启动横幅Banner。如以下内容：
+
+```log
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+ :: Spring Boot ::                (v3.1.5)
+```
+
+创建应用上下文
+
+到这一步就真的开始启动了，第一步就是先要创建一个Spring的上下文出来，只有有了这个上下文才能进行Bean的加载、配置等工作。
+
+准备上下文
+
+这一步非常关键，很多核心操作都是在这一布完成的：
+
+```java
+private void prepareContext(ConfigurableApplicationContext context, ConfigurableEnvironment environment,
+        SpringApplicationRunListeners listeners, ApplicationArguments applicationArguments, Banner printedBanner) {
+
+    // 将environment设置到应用上下文中
+    context.setEnvironment(environment);
+
+    // 对应用上下文进行后处理（可能涉及一些自定义逻辑）
+    postProcessApplicationContext(context);
+
+    // 应用所有的ApplicationContextInitializer
+    applyInitializers(context);
+
+    // 通知监听器上下文准备工作已完成
+    listeners.contextPrepared(context);
+
+    // 如果启用了启动信息日志，则记录启动信息和配置文件信息
+    if (this.logStartupInfo) {
+        logStartupInfo(context.getParent() == null);
+        logStartupProfileInfo(context);
+    }
+
+    // 向上下文中添加特定于 Spring Boot 的单例 Bean
+    context.getBeanFactory().registerSingleton("springApplicationArguments", applicationArguments);
+    if (printedBanner != null) {
+        context.getBeanFactory().registerSingleton("springBootBanner", printedBanner);
+    }
+
+    // 加载应用的源（如配置类）
+    Set<Object> sources = getSources();
+    Assert.notEmpty(sources, "Sources must not be empty");
+    load(context, sources.toArray(new Object[sources.size()]));
+
+    // 通知监听器上下文加载已完成
+    listeners.contextLoaded(context);
+}
+```
+
+在这一步，会打印启动的信息日志，主要内容如下：
+
+```log
+2023-11-18 09:00:00.123  INFO 12345 --- [           main] com.sun.myapp.Application            : Starting Application v0.1.0 on MyComputer with PID 12345 (started by user in /path/to/app)
+```
+
+刷新上下文
+
+这一步，是Spring启动的核心步骤了，这一步骤包括了实例化所有的 Bean、设置它们之间的依赖关系以及执行其他的初始化任务。
+
+```java
+@Override
+public void refresh() throws BeansException, IllegalStateException {
+	synchronized (this.startupShutdownMonitor) {
+		// 为刷新操作准备此上下文
+		prepareRefresh();
+		// 告诉子类刷新内部 bean 工厂
+		ConfigurableListableBeanFactory beanFactory = obtainFreshBeanFactory();
+		// 为在此上下文中使用做好 bean 工厂的准备工作
+		prepareBeanFactory(beanFactory);
+		try {
+			// 允许在上下文子类中对 bean 工厂进行后处理
+			postProcessBeanFactory(beanFactory);
+			// 调用在上下文中注册为 bean 的工厂处理器
+			invokeBeanFactoryPostProcessors(beanFactory);
+			// 注册拦截 bean 创建的 bean 处理器
+			registerBeanPostProcessors(beanFactory);
+			// 初始化此上下文的消息源
+			initMessageSource();
+			// 初始化此上下文的事件多播器
+			initApplicationEventMulticaster();
+			// 在特定上下文子类中初始化其他特殊 bean
+			onRefresh();
+			// 检查监听器 bean 并注册它们
+			registerListeners();
+			// 实例化所有剩余的（非懒加载）单例
+			finishBeanFactoryInitialization(beanFactory);
+			// 最后一步：发布相应的事件
+			finishRefresh();
+		}
+		catch (BeansException ex) {
+			if (logger.isWarnEnabled()) {
+				logger.warn("Exception encountered during context initialization - " +
+						"cancelling refresh attempt: " + ex);
+			}
+			// 销毁已经创建的单例以避免悬挂资源
+			destroyBeans();
+			// 重置“激活”标志
+			cancelRefresh(ex);
+			// 将异常传播给调用者
+			throw ex;
+		}
+		finally {
+			// 在 Spring 的核心中重置常见的内省缓存，因为我们可能不再需要单例 bean 的元数据...
+			resetCommonCaches();
+		}
+	}
+}
+```
+
+所以，这一步中，主要就是创建BeanFactory，然后再通过BeanFactory来实例化Bean。
+
+但是，很多人都会忽略一个关键的步骤（网上很多介绍SpringBoot启动流程的都没提到），那就是Web容器的启动，及Tomcat的启动其实也是在这个步骤。
+
+在refresh-> onRefresh中，这里会调用到ServletWebServerApplicationContext的onRefresh中：
+
+```java
+@Override
+protected void onRefresh() {
+    super.onRefresh();
+    try {
+        createWebServer();
+    }
+    catch (Throwable ex) {
+        throw new ApplicationContextException("Unable to start web server", ex);
+    }
+}
+
+private void createWebServer() {
+    WebServer webServer = this.webServer;
+    ServletContext servletContext = getServletContext();
+    if (webServer == null && servletContext == null) {
+        StartupStep createWebServer = getApplicationStartup().start("spring.boot.webserver.create");
+        ServletWebServerFactory factory = getWebServerFactory();
+        createWebServer.tag("factory", factory.getClass().toString());
+        this.webServer = factory.getWebServer(getSelfInitializer());
+        createWebServer.end();
+        getBeanFactory().registerSingleton("webServerGracefulShutdown",
+                new WebServerGracefulShutdownLifecycle(this.webServer));
+        getBeanFactory().registerSingleton("webServerStartStop",
+                new WebServerStartStopLifecycle(this, this.webServer));
+    }
+    else if (servletContext != null) {
+        try {
+            getSelfInitializer().onStartup(servletContext);
+        }
+        catch (ServletException ex) {
+            throw new ApplicationContextException("Cannot initialize servlet context", ex);
+        }
+    }
+    initPropertySources();
+}
+```
+
+这里面的createWebServer方法中，调用到factory.getWebServer(getSelfInitializer());的时候，factory有三种实现，分别是JettyServletWebServerFactory、TomcatServletWebServerFactory、UndertowServletWebServerFactory这三个，默认使用TomcatServletWebServerFactory。
+
+TomcatServletWebServerFactory的getWebServer方法如下，这里会创建一个Tomcat
+
+```java
+@Override
+public WebServer getWebServer(ServletContextInitializer... initializers) {
+    if (this.disableMBeanRegistry) {
+        Registry.disableRegistry();
+    }
+    Tomcat tomcat = new Tomcat();
+    File baseDir = (this.baseDirectory != null) ? this.baseDirectory : createTempDir("tomcat");
+    tomcat.setBaseDir(baseDir.getAbsolutePath());
+    for (LifecycleListener listener : this.serverLifecycleListeners) {
+        tomcat.getServer().addLifecycleListener(listener);
+    }
+    Connector connector = new Connector(this.protocol);
+    connector.setThrowOnFailure(true);
+    tomcat.getService().addConnector(connector);
+    customizeConnector(connector);
+    tomcat.setConnector(connector);
+    tomcat.getHost().setAutoDeploy(false);
+    configureEngine(tomcat.getEngine());
+    for (Connector additionalConnector : this.additionalTomcatConnectors) {
+        tomcat.getService().addConnector(additionalConnector);
+    }
+    prepareContext(tomcat.getHost(), initializers);
+    return getTomcatWebServer(tomcat);
+}
+```
+
+在最后一步getTomcatWebServer(tomcat);的代码中，会创建一个TomcatServer，并且把他启动：
+
+```java
+protected TomcatWebServer getTomcatWebServer(Tomcat tomcat) {
+    return new TomcatWebServer(tomcat, getPort() >= 0, getShutdown());
+}
+
+public TomcatWebServer(Tomcat tomcat, boolean autoStart, Shutdown shutdown) {
+    Assert.notNull(tomcat, "Tomcat Server must not be null");
+    this.tomcat = tomcat;
+    this.autoStart = autoStart;
+    this.gracefulShutdown = (shutdown == Shutdown.GRACEFUL) ? new GracefulShutdown(tomcat) : null;
+    initialize();
+}
+```
+
+接下来在initialize中完成了tomcat的启动。
+
+最后，SpringBoot的启动过程主要流程如下：
+
+![](./pic/Spring/SpringBoot启动逻辑5.png)
+
+## Spring 6.0和SpringBoot 3.0有什么新特性？
+
+Spring在2022年相继推出了Spring Framework 6.0和SpringBoot 3.0，Spring把这次升级称之为新一代框架的开始，下一个10年的新开端
+
+主要更新内容是以下几个：
+
+- A Java 17 baseline
+
+- Support for Jakarta EE 10 with an EE 9 baseline
+
+- Support for generating native images with GraalVM, superseding the experimental Spring Native project
+
+- Ahead-Of-Time transformations and the corresponding AOT processing support for Spring application contexts
+
+首先，前两个比较容易理解，主要说的是依赖的服务的版本升级的信息，那就是Spring Framework 6.0和SpringBoot 3.0都要求JDK的版本最低也得是JDK 17；并且底层依赖的J2EE也迁移到了Jakarta EE 9。
+
+### AOT编译
+
+Ahead-Of-Time，即预先编译，这是相对于我们熟知的Just-In-Time（JIT，即时编译）来说的。
+
+相比于JIT编译，AOT指的是在程序运行前编译，这样就可以避免在运行时的编译性能消耗和内存消耗，可以在程序运行初期就达到最高性能、也可以显著的加快程序的启动。
+
+AOT的引入，意味着Spring生态正式引入了提前编译技术，相比于JIT编译，AOT有助于优化Spring框架启动慢、占用内存多、以及垃圾无法被回收等问题。
+
+### Spring Native
+
+在Spring的新版本中引入了Spring Native。
+
+有了Spring Native ，Spring可以不再依赖Java虚拟机，而是基于 GraalVM 将 Spring 应用程序编译成原生镜像（native image），提供了一种新的方式来部署 Spring 应用。这种部署Spring的方式是云原生友好的。
+
+Spring Native的优点是编译出来的原生 Spring 应用可以作为一个独立的可执行文件进行部署，而不需要安装JVM，而且启动时间非常短、并且有更少的资源消耗。他的缺点就是构建时长要比JVM更长一些，且不支持一些动态代理功能。

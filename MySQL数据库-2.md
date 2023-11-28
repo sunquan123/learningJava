@@ -7,7 +7,7 @@ tag:
 
 ## InnoDB的锁机制
 
-锁是MySQL中并发控制的重要手段，InnoDB作为一种最常用的执行引擎，他支持很多种锁的类型。InnoDB中的锁根据不同的分类方式也有很多种分法。主要由以下这些：
+锁是MySQL事务持有的，针对数据库中的对象施加锁定的手段，是并发控制的重要部分，InnoDB作为一种最常用的执行引擎，他支持很多种锁的类型。InnoDB中的锁根据不同的分类方式也有很多种分法。主要由以下这些：
 
 按操作划分，可分为DML锁、DDL锁
 
@@ -220,7 +220,7 @@ Next-Key锁是索引记录上的记录锁和索引记录之前间隙上的间隙
 
 Next-Key Lock和Gap Lock一样，只有在InnoDB的RR隔离级别中才会生效。
 
-#### MySQL的加锁原则
+#### MySQL的加锁原则（自己实现一次全部场景）
 
 前面介绍过了Record Lock、Gap Lock和Next-Key Lock，但是并没有说明加锁规则。关于加锁规则，我是看了丁奇大佬的《MySQL实战45讲》中的文章之后理解的，他总结的加锁规则里面，包含了两个“原则”、两个“优化”和一个“bug”：
 
@@ -228,53 +228,98 @@ Next-Key Lock和Gap Lock一样，只有在InnoDB的RR隔离级别中才会生效
 
 原则 2：查找过程中访问到的对象才会加锁。
 
-优化 1：索引上的等值查询，给唯一索引加锁的时候，next-key lock 退化为行锁。
+优化 1：唯一索引上的等值查询，next-key lock退化为行锁。
 
-优化 2：索引上的等值查询，向右遍历时且最后一个值不满足等值条件的时候，next-key lock 退化为间隙锁。
+优化 2：所有索引上的等值查询，会继续向后遍历，向后遍历时且最后一个值不满足等值条件的时候，next-key lock退化为间隙锁。
 
 一个 bug：唯一索引上的范围查询会访问到不满足条件的第一个值为止。
 
-假如，数据库表中当前有以下记录：
+示例如下：
+
+建表+测试数据：
+
+```sql
+CREATE TABLE a 
+( `id` INT, 
+`name` VARCHAR ( 64 ), 
+`age` INT, 
+PRIMARY KEY ( `id` ) 
+) ENGINE = INNODB DEFAULT CHARSET = utf8mb4;
+alter table a add index idx_age(age);
+insert into a values (1,'aa',10);
+insert into a values (5,'bb',20);
+insert into a values (10,'cc',30);
+insert into a values (15,'dd',40);
+insert into a values (20,'ee',50);
+```
+
+数据库表中当前有以下记录：
+
+![](./pic/MySQL/MySQL的加锁原则-0.png)
+
+主键索引示例图如下：
 
 ![](./pic/MySQL/MySQL的加锁原则-1.jpg)
 
-当我们执行update t set d=d+1 where id = 7的时候，由于表 t 中没有 id=7 的记录，所以：
+当我们执行update a set age=17 where id = 7的时候，由于表a中没有 id=7 的记录，所以： 
 
-- 根据原则 1，加锁单位是 next-key lock，session A 加锁范围就是 (5,10]；
+- 根据原则 1，加锁单位是next-key lock，会给 (5,10]加上next-key lock，由于不是范围查找，找到10就会停止。
 
-- 根据优化 2，这是一个等值查询 (id=7)，而 id=10 不满足查询条件，next-key lock 退化成间隙锁，因此最终加锁的范围是 (5,10)。
+- 根据原则2，未访问到10，所以(5,10]的临键锁就会退化成间隙锁(5,10)。
 
-当我们执行select * from t where id>=10 and id<11 for update的时候：
+当我们执行update a set age=17 where id = 5的时候：
 
-- 根据原则 1，加锁单位是 next-key lock，会给 (5,10]加上 next-key lock，范围查找就往后继续找，找到 id=15 这一行停下来
+- 根据原则 1，加锁单位是next-key lock，会给 (1,5]加上next-key lock。
 
-- 根据优化 1，主键 id 上的等值条件，退化成行锁，只加了 id=10 这一行的行锁。
+- 根据优化2，继续往后遍历找到(5,10]
 
-- 根据原则 2，访问到的都要加锁，因此需要加 next-key lock(10,15]。因此最终加的是行锁 id=10 和 next-key lock(10,15]。
+- 根据优化1，访问到5的时候next-key lock退化为行锁，最终加锁的是5这个行锁。
 
-当我们执行select * from t where id>10 and id<=15 for update的时候： 根据原则 1，加锁单位是 next-key lock，会给 (10,15]加上 next-key lock，并且因为 id 是唯一键，所以循环判断到 id=15 这一行就应该停止了。 但是，InnoDB 会往前扫描到第一个不满足条件的行为止，也就是 id=20。而且由于这是个范围扫描，因此索引 id 上的 (15,20]这个 next-key lock 也会被锁上。
+当我们执行select * from a where id>=10 and id<11 for update的时候：
 
-假如，数据库表中当前有以下记录：
+- 根据原则 1，加锁单位是next-key lock，会给(5,10]加上next-key lock，范围查找就往后继续找，找到 id=15 这一行停下来
+
+- 根据优化 1，主键 id 上的等值条件id=10，退化成行锁，所以(5,10]的next-key lock退化成了 id=10的行锁。
+
+- 根据原则 2，访问到的都要加锁，因此需要加next-key lock(10,15]。因此最终加的是行锁 id=10 和next-key lock(10,15]。
+
+当我们执行select * from a where id>10 and id<=15 for update的时候： 
+
+- 根据原则 1，加锁单位是 next-key lock，会给 (10,15]加上next-key lock，并且因为 id 是唯一键，所以循环判断到 id=15 这一行就应该停止了。 
+
+- 但是，InnoDB 会往前扫描到第一个不满足条件的行为止，也就是 id=20。而且由于这是个范围扫描，因此索引 id 上的 (15,20]这个next-key lock 也会被锁上。因此最终加锁的是(10,15]next-key lock和(15,20]next-key lock。
+
+> 如果是在mysql 8.0.20及之后的版本，则这个sql加锁的是(10,15]next-key lock和(15,20)间隙锁了。
+
+普通索引示例图如下：
 
 ![](./pic/MySQL/MySQL的加锁原则-2.jpg)
 
-当我们执行select id from t where c=5 lock in share mode的时候：
+当我们执行select age from a where age=20 for update的时候：
 
-- 根据原则 1，加锁单位是 next-key lock，因此会给 (0,5]加上 next-key lock。要注意 c 是普通索引，因此仅访问 c=5 这一条记录是不能马上停下来的，需要向右遍历，查到 c=10 才放弃。
+- 根据原则 1，加锁单位是next-key lock，因此会给(10,20]加上next-key lock。根据优化2，age 是普通索引，因此仅访问age=20 这一条记录是不能马上停下来的，需要向右遍历，访问到age=30。
 
-- 根据原则 2，访问到的都要加锁，因此要给 (5,10]加 next-key lock。
+- 根据原则 2，访问到的都要加锁，因此要给 (20,30]加next-key lock。
 
-- 根据优化 2：等值判断，向右遍历，最后一个值不满足 c=5 这个等值条件，因此退化成间隙锁 (5,10)。
+- 根据优化 2：等值查询，最后一个值 age=30 不满足查询条件，因此临键锁(20,30]退化成间隙锁(20,30)。
 
-- 根据原则 2 ，只有访问到的对象才会加锁，这个查询使用覆盖索引，并不需要访问主键索引，所以主键索引上没有加任何锁。
+- 根据原则 2，所有访问到的对象才会加锁，这个查询使用覆盖索引，并不需要访问主键索引，所以主键索引上没有加任何锁。因此最终加锁的是(10,20]的next-key lock和(20,30)的间隙锁。
 
-当我们执行select * from t where c>=10 and c<11 for update的时候：
+当我们执行select age from a where age>=20 and age<21 for update的时候：
 
-- 根据原则 1，加锁单位是 next-key lock，会给 (5,10]加上 next-key lock，范围查找就往后继续找，找到 id=15 这一行停下来。
+- 根据原则 1，加锁单位是next-key lock，会给 (10,20]加上next-key lock，范围查找就往后继续找，找到 id=30 这一行停下来。
 
-- 根据原则 2，访问到的都要加锁，因此需要加 next-key lock(10,15]。
+- 根据原则 2，访问到的都要加锁，因此需要加next-key lock(20,30]。
 
-- 由于索引 c 是非唯一索引，没有优化规则，也就是说不会蜕变为行锁，因此最终 sesion A 加的锁是，索引 c 上的 (5,10] 和 (10,15] 这两个 next-key lock。
+- 由于索引 c 是非唯一索引，不符合优化1，因此next-key lock(10,20]不会退化成行锁；由于age<21不是等值查询，不符合优化2，所以next-key lock(20,30]不会退化成间隙锁。最终 sesion A 加的锁是，索引age上的(10,20]和(20,30]这两个next-key lock。
+
+当我们执行select age from a where age>20 and age<=30 for update的时候：
+
+- 根据原则1，加锁单位是next-key lock，因此会给(20,30]加上next-key lock，并且会继续访问到age=40。
+
+- 根据原则2，访问到的记录都会加锁，因此要给(30,40]加上next-key lock。
+
+- 所以最终索引age上有(20,30]和(30,40]这两个 next-key lock。
 
 #### 总结
 

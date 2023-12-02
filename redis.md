@@ -1036,8 +1036,6 @@ AOF 工作流程图如下：
 
 ![](./pic/redis/aof基本工作流程.png)
 
-
-
 ### 比较
 
 RDB和AOF在数据可靠性、性能、存储空间占用等方面都有不同的优缺点，具体可以根据实际业务需求和硬件条件来选择合适的持久化机制，或者同时使用两种持久化机制来实现更高的数据可靠性。
@@ -1185,6 +1183,179 @@ Redis 7.0 版本之后，AOF 重写机制得到了优化改进。下面这段内
 ```shell
 mset {user1}:1:name sunquan {user1}:1:age 27
 ```
+
+## Lua脚本可以在Redis集群里执行吗？
+
+Redis规定在Redis集群里执行的lua脚本，脚本内只能对同一个节点上的key进行操作，这样就需要用到上面提到的{}占位符进行命名。
+
+## Redis主从切换导致分布式锁丢失问题怎么解决？
+
+![](./pic/redis/主从切换问题-1.png)
+
+在主从模式下，使用分布式锁会存在以下问题：
+
+1. 线程1请求Redis主节点加分布式锁成功；
+
+2. Redis主节点宕机了，未及时将加锁命令同步给从节点；从节点被选举为新的主节点；
+
+3. 线程2请求Redis新的主节点加分布式锁，此时因为从节点没有线程1的加锁信息，线程2可以加锁。
+
+这种情况也有对应的临时解决方案。
+
+### 临时解决方案
+
+将Redis主节点设置为每条命令同步到aof文件中。
+
+### RedLock方案
+
+![](./pic/redis/主从切换问题-2.png)
+
+RedLock通过引入多个Redis节点来解决单点故障的问题，该方案至少需要三个Redis节点。
+
+在进行加锁操作时，RedLock会向每个Redis节点发送相同的命令请求，每个节点都会去竞争锁，如果在超过半数以上的节点上成功获取了锁，那么就认为加锁成功。反之，如果大多数节点上没有成功获取锁，则加锁失败。这样就可以避免因为某个Redis节点故障导致加锁失败的情况发生。
+
+例如在这个例子中，一个线程只要给两个Redis节点加锁成功，即可认为线程加锁成功。
+
+这个方案虽然实现了分布式锁，但是本身也面临一些问题，网上Martin Kleppmann和Redis作者有激烈的争论，例如RedLock存在：
+
+1. 主从模式下，一个主节点上锁成功后宕机了，未及时将加锁命令同步给从节点，从节点选举成功后没有原始锁信息。这就导致其他线程可以加锁成功，从而导致其他线程也能完成半数以上节点的加锁操作，导致分布式锁失效。
+
+2. Redis某个节点在加锁成功后，未持久化aof前宕机了，然后被重启了，此时新的节点没有锁信息，其他线程有可能加锁成功，导致分布式锁失效。
+
+3. 网络分区/时间漂移：
+   
+   1. 现在有 A,B,C,D,E 五个 Redis 实例，线程1用 Redlock 算法去向它们加分布式锁，由于网络问题，给 D 和 E 的请求没有到
+   
+   2. C的时间向前快了几秒，C 上的锁立刻就失效了
+   
+   3. Client2 也加分布式锁，由于 C 失效了，线程2在 C，D，E 上都加上了锁
+   
+   4. 两个线程都认为自己拿到了锁
+
+Redis作者也有相应的回复：
+
+1. Redis 的主从切换：这种情况非常罕见，并且可以通过使用 Redis Cluster来避免。
+
+2. 可以设置Redis每条命令同步到aof文件中。
+
+3. 网络分区：RedLock 可以使用 NTP 等工具来同步不同机器之间的时间，从而避免时间漂移导致的问题。而在网络分区恢复后，RedLock 会自动解锁。
+
+具体可以参考：[Is Redlock Safe? 一场关于 Redlock 的辩论 - 掘金](https://juejin.cn/post/7049588479025479717)
+
+### Zookeeper
+
+如果需要高安全性的分布式锁方案，使用Zookeeper更合适。Redis始终在时间维度和存储维度有缺陷，只能保证高性能，不能保证高安全。
+
+## 什么是缓存击穿、缓存穿透、缓存雪崩？
+
+缓存击穿（失效）：是指当某一key的缓存过期时大并发量的请求同时访问此key，瞬间击穿缓存服务器直接访问数据库，让数据库处于负载的情况。
+
+缓存穿透：是指缓存服务器中没有缓存数据，数据库中也没有符合条件的数据，导致业务系统每次都绕过缓存服务器查询下游的数据库，缓存服务器完全失去了其应用的作用。
+
+缓存雪崩：是指当大量缓存同时过期或缓存服务宕机，所有请求的都直接访问数据库，造成数据库高负载，影响性能，甚至数据库宕机。
+
+### 怎么解决缓存穿透比较好呢？
+
+很多时候，缓存穿透是因为有很多恶意流量的请求，这些请求可能随机生成很多Key来请求查询，这些肯定在缓存和数据库中都没有，那就很容易导致缓存穿透。
+
+1. 在缓存穿透防治上常用的技术是布隆过滤器(Bloom Filter)。布隆过滤器是一种比较巧妙的概率性数据结构，它可以告诉你数据一定不存在或可能存在，相比Map、Set、List等传统数据结构它占用内存少、结构更高效。
+   
+   对于缓存穿透，我们可以将查询的数据条件都哈希到一个足够大的布隆过滤器中，用户发送的请求会先被布隆过滤器拦截，一定不存在的数据就直接拦截返回了，从而避免下一步对数据库的压力。
+
+2. 可以对缓存中没查到、数据库中也没查到的数据先在缓存中设置一个value为空值的缓存。其他请求查到缓存中的数据且为空的话主动返回null。但是这个方案无法解决每次查询都是一串随机串的问题。
+
+### 怎么解决缓存击穿比较好呢？
+
+1. 如果提前知道某一个缓存比较热点，可以通过异步定时更新的方式解决，比如某一个热点数据的过期时间是1小时，那么每59分钟，通过定时任务去更新这个热点key，并重新设置其过期时间。
+
+2. 在缓存处理上，通常使用一个加锁来解决缓存击穿的问题。简单来说就是当Redis中根据key获得的value值为空时，先锁上，然后从数据库加载，加载完毕，释放锁。若其他线程也在请求该key时，发现获取锁失败，则先阻塞。
+   
+   代码结构如下：
+   
+   ![](./pic/redis/解决缓存击穿-1.png)
+   
+   单机版代码示例如下：
+   
+   ```java
+   // DCL双重检测锁
+   public Product get(String productId){
+       Product product;
+       // 1、第一次检测缓存，如果缓存存在，直接返回
+       String productStr = redisUtil.get(productId);
+       if(StringUtils.isNotBlank(productStr)){
+       product = JSON.parseObject(productStr);
+       // 读延期
+       redisUtil.expire(productId,genProductExpireTime(),TimeUnit.SECONDS)
+       return product;
+       }
+       // 来到这个阶段的是缓存失效后的所有请求。这里会排队进入代码块
+       synchronized(this){
+       // 2、由于缓存中没有数据，进入第二次检测缓存。
+       productStr = redisUtil.get(productId);
+       if(StringUtils.isNotBlank(productStr)){
+       // 4、能从缓存中查到数据，来到这个阶段的是缓存失效后的非第一个请求
+       // 由于第一个请求已经获得了数据，这个从缓存中直接返回数据
+       product = JSON.parseObject(productStr);
+       return product;
+       }
+       // 3、由于缓存中没有数据，上面两个检测都失效，来到这个阶段的是缓存失效后的第一个请求
+       // 第一个请求查询数据库，更新数据到缓存中
+       product=productDao.get(productId);
+       if(product!=null){
+       redisUtil.set(productId,product,genProductExpireTime(),TimeUnit.SECONDS);
+           }
+       }
+       return product;
+   }
+   // 这里由于使用了synchronized锁，所以会出现一些问题：
+   // 1、出现两个商品缓存失效，大量并发请求时，这两个缓存的所有请求都会排队；最好锁的是单个商品；或者使用分布式锁；
+   // 2、锁是单个jvm进程内的，如果出现多个相同web服务，则会每个web都重建一次缓存
+   ```
+   
+   分布式锁版代码示例如下：
+   
+   ```java
+   // DCL双重检测锁
+   public Product get(String productId){
+       Product product;
+       // 1、第一次检测缓存，如果缓存存在，直接返回
+       String productStr = redisUtil.get(productId);
+       if(StringUtils.isNotBlank(productStr)){
+       product = JSON.parseObject(productStr);
+       // 读延期
+       redisUtil.expire(productId,genProductExpireTime(),TimeUnit.SECONDS)
+       return product;
+       }
+       // 来到这个阶段的是缓存失效后的所有请求。这里会排队进入代码块
+       RLock hotCacheCreateLock=redisson.getLock("HOT_CACHE_CREATE_"+productId);
+       hotCacheCreateLock.lock();// setnx("HOT_CACHE_CREATE_"+productId,clientId)
+       try{
+       // 2、由于缓存中没有数据，进入第二次检测缓存。
+       productStr = redisUtil.get(productId);
+       if(StringUtils.isNotBlank(productStr)){
+       // 4、能从缓存中查到数据，来到这个阶段的是缓存失效后的非第一个请求
+       // 由于第一个请求已经获得了数据，这个从缓存中直接返回数据
+       product = JSON.parseObject(productStr);
+       return product;
+           }
+       // 3、由于缓存中没有数据，上面两个检测都失效，来到这个阶段的是缓存失效后的第一个请求
+       // 第一个请求查询数据库，更新数据到缓存中
+       product=productDao.get(productId);
+       if(product!=null){
+       redisUtil.set(productId,product,genProductExpireTime(),TimeUnit.SECONDS);
+               }
+           }
+       }finally{
+       hotCacheCreateLock.unlock();// del("HOT_CACHE_CREATE_"+productId)
+       }
+       
+       return product;
+   }
+   ```
+
+### 怎么解决缓存雪崩比较好呢？
+
+1. 为了避免大量的缓存在同一时间过期，可以把不同的key过期时间设置成不同的， 并且通过定时刷新的方式更新过期时间。
 
 ## 资料：
 

@@ -1348,14 +1348,445 @@ Redis作者也有相应的回复：
        }finally{
        hotCacheCreateLock.unlock();// del("HOT_CACHE_CREATE_"+productId)
        }
-       
+   
        return product;
    }
+     // 写方法
+     @Transactional
+     public Product update(Product product) {
+       Product productUpdate = productDao.update(product);
+       redisUtil.set(
+           productUpdate.getProductId(), productUpdate, genProductExpireTime(), TimeUnit.SECONDS);
+       return productUpdate;
+     }
    ```
 
 ### 怎么解决缓存雪崩比较好呢？
 
 1. 为了避免大量的缓存在同一时间过期，可以把不同的key过期时间设置成不同的， 并且通过定时刷新的方式更新过期时间。
+
+## 什么情况下会出现数据库缓存不一致问题呢？
+
+如果在并发场景中，如果两个线程，同时进行先写数据库，后更新缓存的操作，就可能会出现不一致：  
+
+| W                | W          |
+| ---------------- | ---------- |
+| 写数据库，更新成20       |            |
+|                  | 写数据库，更新成10 |
+|                  | 写缓存，更新成10  |
+| 写缓存，更新成20（数据不一致） |            |
+
+如果在并发场景中，如果两个线程，同时进行先更新缓存，后写数据库的操作，同理，也可能会出现不一致：  
+
+| W                 | W          |
+| ----------------- | ---------- |
+| 写缓存，更新成20         |            |
+|                   | 写缓存，更新成10  |
+|                   | 写数据库，更新成10 |
+| 写数据库，更新成20（数据不一致） |            |
+
+这两个现象的本质是数据库和缓存操作不是原子操作，无法保证一个请求处理的原子性。
+
+在并发场景中，还有一种容易忽略的并发场景，那就是读写并发。
+
+我们知道，当我们使用了缓存之后，一个读的线程在查询数据的过程是这样的：
+
+1. 查询缓存，如果缓存中有值，则直接返回
+
+2. 查询数据库
+
+3. 把数据库的查询结果更新到缓存中
+
+所以，对于一个读线程来说，虽然不会写数据库，但是是会更新缓存的，所以，在一些特殊的并发场景中，就会导致数据不一致的情况。
+
+读写并发的时序如下：  
+
+| W             | R                |
+| ------------- | ---------------- |
+|               | 读缓存，缓存中没有值       |
+|               | 读数据库，数据库中得到结果为10 |
+| 写数据库和缓存，更新成20 |                  |
+|               | 写缓存，更新成10（数据不一致） |
+
+也就是说，假如一个读线程，在读缓存的时候没查到值，他就会去数据库中查询，但是如果在更新缓存之前，数据库被更新了，但是这个读线程是完全不知道的，那么就导致最终缓存会被重新用一个”旧值”覆盖掉。
+
+但是这种现象其实发生的概率比较低，因为一般一个读操作是很快的，数据库+缓存的读操作基本在十几毫秒左右就可以完成了。而在这期间，刚好另一个线程执行了一个比较耗时的写操作的概率确实比较低。
+
+## 如何解决Redis和数据库的一致性问题？
+
+为了保证Redis和数据库的数据一致性，肯定是要缓存和数据库双写了。
+
+这时候就需要考虑两个问题：是先操作缓存还是先操作数据库？是删除缓存还是更新缓存？
+
+我的建议是优先考虑删除缓存而不是更新缓存，因为删除缓存更加简单，而且带来的一致性问题也更少一些。
+
+另外，在具体操作过程中，建议考虑延迟双删的策略，即：
+
+1. Step 1 , 删除缓存
+
+2. Step 2, 更新数据库
+
+3. Step 3, 再次删除缓存
+
+也就是说在先删除缓存，再更新数据库，然后过个几秒再删一把缓存，避免因为并发出现脏数据。
+
+一般为了提升稳定性，降低对代码的侵入性，还可以考虑把缓存的删除（更新）做成异步化，通过MQ或者监听数据库binlog的方式来处理。
+
+### 删除而不是更新
+
+为了保证数据库和缓存里面的数据是一致的，很多人会在做数据更新的时候，会同时更新缓存里面的内容。但是我其实告诉大家，应该优先选择删除缓存而不是更新缓存。
+
+首先，我们暂时抛开数据一致性的问题，单独来看看更新缓存和删除缓存的复杂的问题。
+
+我们放到缓存中的数据，很多时候可能不只是简单的一个字符串类型的值，他还可能是一个大的JSON串，一个map类型等等。
+
+举个例子，我们需要通过缓存进行扣减库存的时候，你可能需要从缓存中查出整个订单模型数据，把他进行反序列化之后，再解析出其中的库存字段，把他修改掉，然后再序列化，最后再更新到缓存中。
+
+可以看到，更新缓存的动作，相比于直接删除缓存，操作过程比较的复杂，而且也容易出错。
+
+还有就是，在数据库和缓存的一致性保证方面，删除缓存相比更新缓存要更简单一点。
+
+在"写写并发"的场景中，如果同时更新缓存和数据库，那么很容易会出现因为并发的问题导致数据不一致的情况。
+
+但是，如果是做缓存的删除的话，在写写并发的情况下，缓存中的数据都是要被清除的，所以就不会出现数据不一致的问题。
+
+但是，删除缓存相比更新缓存还是有一个小的缺点，那就是带来的一次额外的cache miss，也就是说在删除缓存后的下一次查询会无法命中缓存，要查询一下数据库。
+
+这种cache miss在某种程度上可能会导致缓存击穿，也就是刚好缓存被删除之后，同一个Key有大量的请求过来，导致缓存被击穿，大量请求访问到数据库。
+
+但是，通过加锁的方式是可以比较方便的解决缓存击穿的问题的。
+
+总之，删除缓存相比较更新缓存，方案更加简单，而且带来的一致性问题也更少。所以，在删除和更新缓存之间，我还是偏向于建议大家优先选择删除缓存。
+
+### 先写数据库还是先删缓存
+
+在确定了优先选择删除缓存而不是更新缓存之后，留给我们的数据库+缓存更新的可选方案就剩下："先写数据库后删除缓存"和"先删除缓存后写数据库了"。
+
+那么，这两种方式各自有什么优缺点呢？该如何选择呢？
+
+#### 先写数据库
+
+因为数据库和缓存的操作是两步的，没办法做到保证原子性，所以就有可能第一步成功而第二步失败。
+
+而且，先写数据库，后删除缓存，如果第二步失败了，会导致数据库中的数据已经更新，但是缓存还是旧数据，导致数据不一致。
+
+#### 先删缓存
+
+那么，如果是先删除缓存后操作数据库的话，会不会方案更完美一点呢？
+
+首先，如果是选择先删除缓存后写数据库的这种方案，那么第二步的失败是可以接受的，因为这样不会有脏数据，也没什么影响，只需要重试就好了。
+
+但是，先删除缓存后写数据库的这种方式，会无形中放大"读写并发"导致的数据不一致的问题。我们知道，当我们使用了缓存之后，一个读的线程在查询数据的过程是这样的：
+
+1. 查询缓存，如果缓存中有值，则直接返回
+
+2. 查询数据库
+
+3. 把数据库的查询结果更新到缓存中
+
+所以，对于一个读线程来说，虽然不会写数据库，但是是会更新缓存的，所以，在一些特殊的并发场景中，就会导致数据不一致的情况。
+
+读写并发的时序如下：  
+
+| W             | R                |
+| ------------- | ---------------- |
+|               | 读缓存，缓存中没有值       |
+|               | 读数据库，数据库中得到结果为10 |
+| 写数据库和缓存，更新成20 |                  |
+|               | 写缓存，更新成10（数据不一致） |
+
+也就是说，假如一个读线程，在读缓存的时候没查到值，他就会去数据库中查询，但是如果自查询到结果之后，更新缓存之前，数据库被更新了，但是这个读线程是完全不知道的，那么就导致最终缓存会被重新用一个"旧值"覆盖掉。
+
+这也就导致了缓存和数据库的不一致的现象。
+
+但是这种现象其实发生的概率比较低，因为一般一个读操作是很快的，数据库+缓存的读操作基本在十几毫秒左右就可以完成了。
+
+因为这种"读写并发"问题发生的前提是读线程读缓存没读到值，而先删缓存的动作一旦发生，刚好可以让读线程就从缓存中读不到值。
+
+所以，本来一个小概率会发生的"读写并发"问题，在先删缓存的过程中，问题发生的概率会被放大。
+
+而且这种问题的后果也比较严重，那就是缓存中的值一直是错的，就会导致后续的所有命中缓存的查询结果都是错的！
+
+那么怎么解决呢？
+
+临时方案是缓存设置过期时间，过期了自然会有读方法写入新数据。当然，下次写入新数据也可能遇到这个问题。
+
+#### 读写方法加锁
+
+这个方案是读写方法先获得分布式锁，才能执行操作。
+
+如果写方法得到锁，则写入数据库再删除缓存，此期间阻塞读方法。如果读方法得到锁，则先写入缓存，再执行写方法，写方法依然会删除缓存，最后缓存得到的数据也是新的。
+
+当然这样在并发量不大时可以使用。
+
+示例代码
+
+```java
+  // DCL双重检测锁
+  public Product get(String productId) {
+    Product product;
+    String productStr = redisUtil.get(productId);
+    if (StringUtils.isNotBlank(productStr)) {
+      product = JSON.parseObject(productStr);
+      // 读延期
+      redisUtil.expire(productId, genProductExpireTime(), TimeUnit.SECONDS);
+      return product;
+    }
+    RLock hotCacheCreateLock = redisson.getLock("HOT_CACHE_CREATE_" + productId);
+    hotCacheCreateLock.lock();
+    try {
+      productStr = redisUtil.get(productId);
+      if (StringUtils.isNotBlank(productStr)) {
+        product = JSON.parseObject(productStr);
+        return product;
+      }
+      // 读取数据库前加分布式锁，写方法将被阻塞
+      RLock hotCacheUpdateLock = redisson.getLock("HOT_CACHE_UPDATE_" + productId);
+      hotCacheUpdateLock.lock();
+      try {
+        product = productDao.get(productId);
+        if (product != null) {
+          redisUtil.set(productId, product, genProductExpireTime(), TimeUnit.SECONDS);
+        }
+      } finally {
+        hotCacheUpdateLock.unlock();
+      }
+    } finally {
+      hotCacheCreateLock.unlock();
+    }
+
+    return product;
+  }
+  // 写方法
+  @Transactional
+  public Product update(Product product) {
+    Product productUpdate = null;
+    RLock hotCacheUpdateLock = redisson.getLock("HOT_CACHE_UPDATE_" + product.getId());
+    hotCacheUpdateLock.lock();
+    try {
+      productUpdate = productDao.update(product);
+      redisUtil.set(
+          productUpdate.getProductId(), productUpdate, genProductExpireTime(), TimeUnit.SECONDS);
+    } finally {
+      hotCacheUpdateLock.unlock();
+    }
+    return productUpdate;
+  }
+```
+
+##### 进一步优化
+
+这种加锁方式可能会在所有读写操作并发时排队执行，如果需要性能优化，可以使用读写锁。原理是：全部读请求获取读锁可以并发执行，一旦一个写请求加了写锁，所有读请求将阻塞，直到写锁释放，此时将会读到新数据。
+
+代码示例
+
+```java
+  public Product get(String productId) {
+    Product product;
+    String productStr = redisUtil.get(productId);
+    if (StringUtils.isNotBlank(productStr)) {
+      product = JSON.parseObject(productStr);
+      // 读延期
+      redisUtil.expire(productId, genProductExpireTime(), TimeUnit.SECONDS);
+      return product;
+    }
+    RLock hotCacheCreateLock = redisson.getLock("HOT_CACHE_CREATE_" + productId);
+    hotCacheCreateLock.lock();
+    try {
+      productStr = redisUtil.get(productId);
+      if (StringUtils.isNotBlank(productStr)) {
+        product = JSON.parseObject(productStr);
+        return product;
+      }
+      // 获取读锁
+      RReadWriteLock readWriteLock = redisson.getReadWriteLock("HOT_CACHE_UPDATE_" + productId);
+      RLock rLock = readWriteLock.getReadLock();
+      rLock.lock();
+      try {
+        product = productDao.get(productId);
+        if (product != null) {
+          redisUtil.set(productId, product, genProductExpireTime(), TimeUnit.SECONDS);
+        }
+      } finally {
+        rLock.unlock();
+      }
+    } finally {
+      hotCacheCreateLock.unlock();
+    }
+
+    return product;
+  }
+
+    @Transactional
+    public Product update(Product product) {
+    Product productUpdate = null;
+    // 加写锁
+    RReadWriteLock readWriteLock = redisson.getReadWriteLock("HOT_CACHE_UPDATE_" + product.getId());
+    RLock wLock = readWriteLock.getWriteLock();
+    wLock.lock();
+    try {
+      productUpdate = productDao.update(product);
+      redisUtil.set(
+          productUpdate.getProductId(), productUpdate, genProductExpireTime(), TimeUnit.SECONDS);
+    } finally {
+      wLock.unlock();
+    }
+    return productUpdate;
+  }
+```
+
+#### 延迟双删
+
+所谓延迟双删，其实是：
+
+1. 先删除缓存
+
+2. 更新数据库
+
+3. 异步删除缓存
+
+##### 示例代码
+
+```java
+@Service
+public class ProductService {
+    @Autowired
+    private StringRedisTemplate redisTemplate;
+    private final BlockingQueue<String> cacheDeletionQueue = new LinkedBlockingQueue<>();
+    public void updateProduct(Product product) {
+        // 第一次删除缓存
+        deleteCache(product.getId());
+        // 更新数据库
+        updateProductInDB(product);
+        // 第二次删除缓存
+        cacheDeletionQueue.add(product.getId());
+    }
+
+    @Scheduled(fixedDelay = 100)
+    public void delayedCacheDeletion() {
+        String productId = cacheDeletionQueue.poll();
+        if (productId != null) {
+            deleteCache(productId);
+        }
+    }
+}
+```
+
+这里的读方法实现逻辑就是：未读到缓存，则查询数据库，写入缓存。
+
+##### 解决的问题
+
+1. 如果先更新数据库再删除缓存，可能更新数据库成功，删除缓存失败，则缓存中是旧数据。
+
+2. 如果先删除缓存失败了，更新数据库成功了，可以延迟删除缓存解决
+
+3. 如果第一次删除缓存成功，更新数据库之前有读线程读到旧数据写入缓存，延迟删除可以保证缓存旧数据被删除。
+
+##### 未解决的问题
+
+1. 第一次删除失败了，缓存随后过期了，然后有读请求读到旧数据写入缓存，延迟删除也失败了，数据库最后是新数据，缓存是旧数据。--可以在写方法一开始给这行数据加锁来解决
+
+2. 两次删除缓存都失败，则数据库最后是新数据，缓存是旧数据。
+
+3. 如果缓存删除了，则无法应对可能的缓存击穿问题。--需要加锁、异步定时更新缓存来解决
+
+4. 第二次删除导致缓存的新数据也被删了，导致需要读方法再来一次写入缓存。
+
+##### 为什么要有第二次延迟删除？
+
+引入第二次是为了解决读写并发导致缓存还是旧数据的问题。这个问题会导致缓存中一直是旧数据。
+
+##### 为什么不可以先更再删呢？
+
+如果先更新数据库再删除缓存，可能更新数据库成功，删除缓存失败，则缓存中是旧数据。这里是个概率问题，第一次删除失败的概率是有的，两次删除都失败的概率也存在，但是比较低。
+
+如果你就不想做第一次删除，或者就是不想做第二次删除，也可以，业务量不大的话都问题不大，我们要解决的就是高并发情况下的一致性问题，通过两次删除降低不一致的概率。
+
+### 如何选择
+
+比如，如果业务量不大/写并发不高的情况，可以选择先更新数据库，后删除缓存的方式，因为这种方案更加简单。
+
+但是，如果是业务量比较大，并发度很高的话，那么建议选择先删除缓存，因为这种方式在引入延迟双删、分布式锁等机制，会使得整个方案会更加趋近于完美，带来的并发问题更少。当然，也会更复杂。
+
+其实，先操作数据库，后操作缓存，是一种比较典型的设计模式——Cache Aside Pattern。
+
+这种模式的主要方案就是先写数据库，后删缓存，而且缓存的删除是可以在旁路异步执行的。
+
+这种模式的优点就是我们说的，他可以解决"写写并发"导致的数据不一致问题，并且可以大大降低"读写并发"的问题，所以这也是Facebook比较推崇的一种模式。
+
+### 优化方案
+
+Cache Aside Pattern 这种模式中，我们可以异步的在旁路处理缓存。其实这种方案在大厂中确实有的还蛮多的。
+
+主要的方式就是借助数据库的binlog或者基于异步消息订阅的方式。
+
+![](./pic/redis/CacheAsidePattern.png)
+
+也就是说，在代码的主要逻辑中，先操作数据库就行了，然后数据库操作完，可以发一个异步消息出来。
+
+然后再由一个监听者在接到消息之后，异步的把缓存中的数据删除掉。
+
+或者干脆借助数据库的binlog，订阅到数据库变更之后，异步的清除缓存。
+
+这两种方式都会有一定的延时，通常在毫秒级别，一般用于在可接受秒级延迟的业务场景中。
+
+> 这个方案为啥可以不做延迟双删，因为我们认为基于Binlog的监听是相对可靠的，监听到binlog之后就不断的重试进行删除。而通过写代码去删除缓存是不一定可靠的，因为这个重试机制并不一定可靠。 
+> 当然，如果要更加完美一点，肯定还是： 
+> 1、先删缓存
+> 2、再更新数据
+> 3、再监听binlog删除缓存
+
+### Read/Write Through Pattern
+
+在这两种模式中，应用程序将缓存作为主要的数据源，不需要感知数据库，更新数据库和从数据库的读取的任务都交给缓存来代理。
+
+Read Through模式下，是由缓存配置一个读模块，它知道如何将数据库中的数据写入缓存。在数据被请求的时候，如果未命中，则将数据从数据库载入缓存。
+
+Write Through模式下，缓存配置一个写模块，它知道如何将数据写入数据库。当应用要写入数据时，缓存会先存储数据，并调用写模块将数据写入数据库。
+
+也就是说，这两种模式下，不需要应用自己去操作数据库，缓存自己就把活干完了。
+
+### Write Behind Caching Pattern
+
+这种模式就是在更新数据的时候，只更新缓存，而不更新数据库，然后再异步的定时把缓存中的数据持久化到数据库中。
+
+这种模式的优缺点比较明显，那就是读写速度都很快，但是会造成一定的数据丢失。
+
+这种比较适合用在比如统计文章的访问量、点赞等场景中，允许数据少量丢失，但是速度要快。
+
+## 如何解决单个key百万并发请求Redis扛不住的问题？
+
+Redis即使是集群，单个key也是只能存储在单个Redis节点上，如果遇到单个key可能瞬间百万并发的情况，Redis节点也只能扛住10万。
+
+因此可以在java服务端采用二级缓存方式，将热点数据存在每个java服务中。外部使用Nginx分发，使用10个java服务，每个java服务扛住10万并发，即可解决这个问题。
+
+### 需要解决
+
+单个jvm不可能存放大量缓存数据，必须有选择的存放部分热点数据。如何定义热点数据需要考虑。
+
+## 高并发下商品超卖怎么解决？
+
+代码如下：
+
+```java
+  public String decrease(String productId) {
+    int stock = Integer.parseInt(stringRedisTemplate.opsForValue().get(productId));
+    if (stock > 0) {
+      stock = stock - 1;
+      stringRedisTemplate.opsForValue().set(productId, String.valueOf(stock));
+      logger.info("扣库存成功，剩余库存:{}", stock);
+    } else {
+      logger.info("扣库存失败，剩余库存:{}", stock);
+    }
+    return "end";
+  }
+```
+
+高并发场景下，扣减库存接口很可能出现超卖问题：两个线程同时读到相同的库存数，然后扣减，导致最终扣减的数量超过库存。
+
+加分布式锁
+
+可以使用redis实现一个分布式锁，
 
 ## 资料：
 

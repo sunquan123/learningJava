@@ -1672,6 +1672,7 @@ public class OrderService {
 // 监听
 @Component
 public class BillListener {
+    // 如果需要等到发布事件的事务执行完毕再执行这里的监听事件,可以使用@TransactionalEventListener可以
     @EventListener
     public void onListenPayFinished(PayFinishedEvent event) {
         // 记账
@@ -2349,7 +2350,7 @@ public class TestServiceImpl implements ITestService {
 
 同时需要注意，这个统计结果只在内存中有效，如果应用发生重启，就会归零了。如果想要持久化保存，就需要考虑持久化存储了，如存在mysql或者redis中。
 
-## Springboot是如何实现自动配置的？
+## SpringBoot是如何实现自动配置的？
 
 Spring Boot会根据类路径中的jar包、类，为jar包里的类自动配置，这样可以极大的减少配置的数量。简单点说就是它会根据定义在classpath下的类，自动的给你生成一些Bean，并加载到Spring的Context中。
 
@@ -2397,7 +2398,7 @@ class ChinaEnvironmentCondition implements Condition{
 
 ### Spring Boot应用的启动入口
 
-自动配置充分的利用了spring 4.0的条件化配置特性，那么，Spring Boot是如何实现自动配置的？Spring 4中的条件化配置又是怎么运用到Spring Boot中的呢？这要从Spring Boot的启动类说起。Spring Boot应用通常有一个名为*Application的入口类，入口类中有一个main方法，这个方法其实就是一个标准的Java应用的入口方法。一般在main方法中使用SpringApplication.run()来启动整个应用。值得注意的是，这个入口类要使用@SpringBootApplication注解声明。@SpringBootApplication是Spring Boot的核心注解，他是一个组合注解。
+自动配置充分的利用了spring 4.0的条件化配置特性，那么，Spring Boot是如何实现自动配置的？Spring 4中的条件化配置又是怎么运用到Spring Boot中的呢？这要从Spring Boot的启动类说起。Spring Boot应用通常有一个名为Application的入口类，入口类中有一个main方法，这个方法其实就是一个标准的Java应用的入口方法。一般在main方法中使用SpringApplication.run()来启动整个应用。值得注意的是，这个入口类要使用@SpringBootApplication注解声明。@SpringBootApplication是Spring Boot的核心注解，他是一个组合注解。
 
 ```java
 @Target({ElementType.TYPE})

@@ -1,18 +1,64 @@
-如果是比较大的文件，这样无意义的copy显然会极大的浪费CPU的效率，所以就诞生了DMA  
-
 # Java面试题
 
-#### 基础
+## 基础
 
-###### jvm、jre、jdk
+### jvm、jre、jdk
 
-###### java是编译与解释并存的语言
+### java是编译与解释并存的语言
 
-###### java和c++区别
+### java和c++区别
 
-###### ^：按位异或
+C++是编译型语言（首先将源代码编译生成机器语言，再由机器运行机器码），执行速度快、效率高；依赖编译器、跨平台性差些。 
+Java是解释型语言（源代码不是直接翻译成机器语言，而是先翻译成中间代码，再由解释器对中间代码进行解释运行。），执行速度慢、效率低；依赖解释器、跨平台性好。
 
-###### 左移、右移、无符号右移的原理
+PS：也有人说Java是半编译、半解释型语言。Java 编译器(javac)先将java源程序编译成Java字节码(.class)，JVM负责解释执行字节码文件。
+
+二者更多的主要区别如下：  
+
+C++是平台相关的，Java是平台无关的。 
+C++对所有的数字类型有标准的范围限制，但字节长度是跟具体实现相关的，同一个类型在不同操作系统可能长度不一样。Java在所有平台上对所有的基本类型都有标准的范围限制和字节长度。 
+C++除了一些比较少见的情况之外和C语言兼容 。 Java没有对任何之前的语言向前兼容。但在语法上受 C/C++ 的影响很大 
+C++允许直接调用本地的系统库 。 Java要通过JNI调用, 或者 JNA 
+C++允许过程式程序设计和面向对象程序设计 。Java必须使用面向对象的程序设计方式 
+C++支持指针，引用，传值调用 。Java只有值传递。 
+C++需要显式的内存管理，但有第三方的框架可以提供垃圾搜集的支持。支持析构函数。 Java 是自动垃圾收集的。没有析构函数的概念。 
+C++支持多重继承，包括虚拟继承 。Java只允许单继承，需要多继承的情况要使用接口。
+
+### 为什么Java不支持多继承？
+
+因为如果要实现多继承，就会像C++中一样，存在菱形继承的问题，C++为了解决菱形继承问题，又引入了虚继承。因为支持多继承，引入了菱形继承问题，又因为要解决菱形继承问题，引入了虚继承。而经过分析，人们发现我们其实真正想要使用多继承的情况并不多。所以，在 Java 中，不允许“多继承”，即一个类不允许继承多个父类。
+
+除了菱形的问题，支持多继承复杂度也会增加。一个类继承了多个父类，可能会继承大量的属性和方法，导致类的接口变得庞大、难以理解和维护。此外，在修改一个父类时，可能会影响到多个子类，增加了代码的耦合度。
+
+在Java 8以前，接口中是不能有方法的实现的。所以一个类同时实现多个接口的话，也不会出现C++中的歧义问题。因为所有方法都没有方法体，真正的实现还是在子类中的。**但是，Java 8中支持了默认函数（default method ），即接口中可以定义一个有方法体的方法了。**
+
+而又因为Java支持同时实现多个接口，这就相当于通过implements就可以从多个接口中继承到多个方法了，但是，Java8中为了避免菱形继承的问题，在实现的多个接口中如果有相同方法，就会要求该类必须重写这个方法。
+
+#### 菱形继承问题
+
+Java的创始人James Gosling曾经回答过，他表示：
+
+“Java之所以不支持一个类继承多个类，主要是因为在设计之初我们听取了来自C++和Objective-C等阵营的人的意见。因为多继承会产生很多歧义问题。”
+
+Gosling老人家提到的歧义问题，其实是C++因为支持多继承之后带来的菱形继承问题。  
+
+![](./pic/java/菱形继承问题.jpg)
+
+假设我们有类B和类C，它们都继承了相同的类A。另外我们还有类D，类D通过多重继承机制继承了类B和类C。
+
+这时候，因为D同时继承了B和C，并且B和C又同时继承了A，那么，D中就会因为多重继承，继承到两份来自A中的属性和方法。
+
+这时候，在使用D的时候，如果想要调用一个定义在A中的方法时，就会出现歧义。  
+
+因为这样的继承关系的形状类似于菱形，因此这个问题被形象地称为菱形继承问题。
+
+而C++为了解决菱形继承问题，又引入了虚继承。
+
+所以，在 Java 中，不允许“声明多继承”，即一个类不允许继承多个父类。但是 Java 允许“实现多继承”，即一个类可以实现多个接口，一个接口也可以继承多个父接口。由于接口只允许有方法声明而不允许有方法实现（Java 8之前），这就避免了 C++ 中多继承的歧义问题。
+
+## ^：按位异或
+
+## 左移、右移、无符号右移的原理
 
 |             | 原码                             | 补码                                                        | 反码                                     | 左移                                | 右移                            | 无符号右移            |
 | ----------- | ------------------------------ | --------------------------------------------------------- | -------------------------------------- | --------------------------------- | ----------------------------- | ---------------- |
@@ -24,15 +70,198 @@
 
 ###### continue、break、return区别
 
-###### 基本数据类型：byte、short、int、long、float、double、char、boolean
+### 基本数据类型：byte、short、int、long、float、double、char、boolean
 
-###### 包装类型和基本类型的区别
+| 分类         | 基本数据类型      | 包装类           | 长度                                                         | 表示范围                   |
+| ---------- | ----------- | ------------- | ---------------------------------------------------------- | ---------------------- |
+| 布尔型<br>    | boolean<br> | Boolean<br>   | /<br>                                                      | /<br>                  |
+| 整型<br>     | byte<br>    | Byte<br>      | 1字节<br>                                                    | -128 到 127<br>         |
+| short<br>  | Short<br>   | 2字节<br>       | -32,768 到 32,767<br>                                       |                        |
+| int<br>    | Integer<br> | 4字节<br>       | -2,147,483,648 到 2,147,483,647<br>                         |                        |
+| long<br>   | Long<br>    | 8字节<br>       | -9,223,372,036,854,775,808 到 9,223,372,036,854,775,807<br> |                        |
+| 字符型<br>    | char<br>    | Character<br> | 2字节<br>                                                    | Unicode字符集中的任何字符<br>   |
+| 浮点型<br>    | float<br>   | Float<br>     | 4字节<br>                                                    | 约 -3.4E38 到 3.4E38<br> |
+| double<br> | Double<br>  | 8字节<br>       | 约 -1.7E308 到 1.7E308                                       |                        |
+
+因为Java是一种面向对象语言，很多地方都需要使用对象而不是基本数据类型。比如，在集合类中，我们是无法将int 、double等类型放进去的。因为集合的容器要求元素是Object类型。
+
+为了让基本类型也具有对象的特征，就出现了包装类型，它相当于将基本类型“包装起来”，使得它具有了对象的性质，并且为其添加了属性和方法，丰富了基本类型的操作。
+
+### 包装类型和基本类型的区别
+
+1. 默认值不同，基本类型的默认值为0, false或\u0000等，包装类默认为null
+
+2. 初始化方式不同，一个需要new，一个不需要
+
+3. 存储方式不同，基本类型保存在栈上，包装类对象保存在堆上（成员变量的话，在不考虑JIT优化的栈上分配时，都是随着对象一起保存在堆上的）
 
 ###### 基本数据类型一定存放在栈中吗
 
-###### 自动拆箱intValue、自动装箱valueOf
+### 自动拆箱intValue、自动装箱valueOf
 
-###### 浮点数和定点数的区别
+包装类是对基本类型的包装，所以，把基本数据类型转换成包装类的过程就是装箱；反之，把包装类转换成基本数据类型的过程就是拆箱。
+
+在Java SE5中，为了减少开发人员的工作，Java提供了自动拆箱与自动装箱功能。  
+
+自动装箱: 就是将基本数据类型自动转换成对应的包装类。  
+
+自动拆箱：就是将包装类自动转换成对应的基本数据类型。
+
+```java
+Integer i =10;  //自动装箱
+int b= i;     //自动拆箱
+```
+
+自动装箱都是通过包装类的valueOf()方法来实现的，自动拆箱都是通过包装类对象的xxxValue()来实现的。  
+
+如：int的自动装箱都是通过Integer.valueOf()方法来实现的，Integer的自动拆箱都是通过integer.intValue()来实现的。
+
+### 哪些地方会自动拆装箱
+
+#### 将基本数据类型放入集合类
+
+Java中的集合类只能接收对象类型，当传入基本数据类型后会自动装箱：
+
+```java
+List<Integer> li = new ArrayList<>();
+for (int i = 1; i < 50; i ++){
+    li.add(i);
+}
+```
+
+将上面代码进行反编译，可以得到以下代码：
+
+```java
+List<Integer> li = new ArrayList<>();
+for (int i = 1; i < 50; i ++){
+    li.add(Integer.valueOf(i));
+}
+```
+
+#### 包装类型和基本类型的大小比较
+
+```java
+Integer a=1;
+System.out.println(a==1?"等于":"不等于");
+Boolean bool=false;
+System.out.println(bool?"真":"假");
+```
+
+对以上代码进行反编译，得到以下代码：
+
+```java
+Integer a=1;
+System.out.println(a.intValue()==1?"等于":"不等于");
+Boolean bool=false;
+System.out.println(bool.booleanValue?"真":"假");
+```
+
+#### 包装类型的运算
+
+```java
+Integer i = 10;
+Integer j = 20;
+System.out.println(i+j);
+```
+
+反编译后代码如下：
+
+```java
+Integer i = Integer.valueOf(10);
+Integer j = Integer.valueOf(20);
+System.out.println(i.intValue() + j.intValue());
+```
+
+#### 三目运算符的使用
+
+```java
+boolean flag = true; //设置成true，保证条件表达式的表达式二一定可以执行
+boolean simpleBoolean = false; //定义一个基本数据类型的boolean变量
+Boolean nullBoolean = null;//定义一个包装类对象类型的Boolean变量，值为null
+boolean x = flag ? nullBoolean : simpleBoolean; //使用三目运算符并给x变量赋值
+```
+
+很多人不知道，其实在int k = flag ? i : j;这一行，会发生自动拆箱。反编译后代码如下：
+
+```java
+boolean flag = true;
+boolean simpleBoolean = false;
+Boolean nullBoolean = null;
+boolean x = flag ? nullBoolean.booleanValue() : simpleBoolean;
+```
+
+这其实是三目运算符的语法规范。当第二，第三位操作数分别为基本类型和对象时，其中的对象就会拆箱为基本类型进行操作。
+
+可以看到，反编译后的代码的最后一行，编译器帮我们做了一次自动拆箱，而就是因为这次自动拆箱，导致代码出现对于一个null对象（nullBoolean.booleanValue()）的调用，导致了NPE。
+
+#### 函数参数与返回值
+
+这个比较容易理解，直接上代码了：
+
+```java
+//自动拆箱
+public int getNum1(Integer num) {
+return num;
+}
+//自动装箱
+public Integer getNum2(int num) {
+return num;
+}
+```
+
+#### 自动拆装箱与缓存
+
+```java
+public static void main(String... strings) {
+    Integer integer1 = 3;
+    Integer integer2 = 3;
+    if (integer1 == integer2)
+        System.out.println("integer1 == integer2");
+    else
+        System.out.println("integer1 != integer2");
+    Integer integer3 = 300;
+    Integer integer4 = 300;
+    if (integer3 == integer4)
+        System.out.println("integer3 == integer4");
+    else
+        System.out.println("integer3 != integer4");
+}
+```
+
+输出结果：
+
+```log
+integer1 == integer2
+integer3 != integer4
+```
+
+原因就和Integer中的缓存机制有关。在Java 5中，在Integer的操作上引入了一个新功能来节省内存和提高性能。整型对象通过使用相同的对象引用实现了缓存和重用。
+
+> 适用于整数值区间-128 至 +127。  
+> 
+> 只适用于自动装箱。使用构造函数创建对象不适用。
+
+我们只需要知道，当需要进行自动装箱时，如果数字在-128至127之间时，会直接使用缓存中的对象，而不是重新创建一个对象。
+
+其中的javadoc详细的说明了缓存支持-128到127之间的自动装箱过程。最大值127可以通过-XX:AutoBoxCacheMax=size修改。
+
+实际上这个功能在Java 5中引入的时候,范围是固定的-128 至 +127。后来在Java 6中，可以通过java.lang.Integer.IntegerCache.high设置最大值。
+
+这使我们可以根据应用程序的实际情况灵活地调整来提高性能。到底是什么原因选择这个-128到127范围呢？因为这个范围的数字是最被广泛使用的。 在程序中，第一次使用Integer的时候也需要一定的额外时间来初始化这个缓存。
+
+在Boxing Conversion部分的Java语言规范(JLS)规定如下：
+
+如果一个变量p的值是：
+
+```log
+-128至127之间的整数(§3.10.1)
+true 和 false的布尔值 (§3.10.3)
+‘\u0000’至 ‘\u007f’之间的字符(§3.10.4)
+```
+
+范围内的时，将p包装成a和b两个对象时，可以直接使用a==b判断a和b的值是否相等。
+
+### 浮点数和定点数的区别
 
 浮点数通过二进制表达小数，通过2^-1,2^-2...表达小数，有误差-----java开发手册：二进制无法精确表示大部分十进制小数
 
@@ -57,7 +286,23 @@ R：基数，可以约定为2、4、16
 -0.75(H)的规格化浮点数为1 01111110 100 0000 0000 0000 0000 0000
 ```
 
-###### BigDecimal的计数保留法最好是四舍六入五成双：BigDecimal.ROUND_HALF_EVEN
+### 为什么不能用BigDecimal的equals方法做等值比较？
+
+因为BigDecimal的equals方法和compareTo并不一样，equals方法会比较两部分内容，分别是值（value）和标度（scale），而对于0.1和0.10这两个数字，他们的值虽然一样，但是精度是不一样的，所以在使用equals比较的时候会返回false。
+
+### BigDecimal(double)和BigDecimal(String)有什么区别？
+
+有区别，而且区别很大。
+
+因为double是不精确的，所以使用一个不精确的数字来创建BigDeciaml，得到的数字也是不精确的。如0.1这个数字，double只能表示他的近似值。
+
+所以，当我们使用new BigDecimal(0.1)创建一个BigDecimal 的时候，其实创建出来的值并不是正好等于0.1的。
+
+而是0.1000000000000000055511151231257827021181583404541015625。这是因为double自身表示的只是一个近似值。
+
+而对于BigDecimal(String) ，当我们使用new BigDecimal("0.1")创建一个BigDecimal 的时候，其实创建出来的值正好就是等于0.1的，他的标度也就是1。
+
+#### BigDecimal的计数保留法最好是四舍六入五成双：BigDecimal.ROUND_HALF_EVEN
 
 ###### 静态方法为什么不能调用非静态成员?
 
@@ -73,27 +318,71 @@ R：基数，可以约定为2、4、16
 
 面向对象指的是先抽象出对象，通过对象执行方法的方式完成功能。面向对象更易维护、更易复用、更易拓展。
 
+###### 面向对象的五大基本原则？
+
+五大基本原则：单一职责原则（Single-Responsibility Principle）、开放封闭原则（Open-Closed principle）、Liskov替换原则（Liskov-Substituion Principle）、依赖倒置原则（Dependency-Inversion Principle）和 接口隔离原则（Interface-Segregation Principle）。  
+
+单一职责原则：一个类最好只做一件事
+
+开放封闭原则：对扩展开放、对修改封闭  
+
+里氏替换原则：子类必须能够替换其基类  
+
+依赖倒置原则：程序要依赖于抽象接口，而不是具体的实现  
+
+接口隔离原则：使用多个小的专门的接口，而不要使用一个大的总接口
+
 ###### 类的构造方法
 
 我们不定义类的构造方法的话，java会添加一个默认的无参构造方法，我们添加了一个（无论是否有参）构造方法，java就不会添加默认了。所以我们重载构造方法时，一定要加上无参构造方法。构造方法可以被重载，不可被重写。构造方法必须与类名相同，没有返回值，但不可以用void。new的时候调用构造方法。
 
-###### 封装
+### 封装
 
 封装是指把一个类的状态信息隐藏在类的内部，不允许外部对象直接访问类的内部信息，但是提供一些可以被外部访的方法来操作属性。如果一个对象没有对外部提供方法，那这个对象也就没有存在意义了。外部有时候不需要操作类内部的部分信息，只需要调用指定的方法就可以执行功能。
 
-###### 继承
+### 继承
 
 不同类型的对象之间有一些共性存在，这就是基础类。继承就是在基础类的基础上建立新类的技术，新类的定义可以增加新的数据和功能，也可以使用基础类的功能，但是不能选择性的继承，必须是全部继承。通过使用继承，可以提高代码重用性，增加程序可维护性，节省创造新类的时间，提高我们的开发效率。
 
-###### 多态
+### 多态
 
 多态是指一个对象具有多种状态，具体表现为父类的引用指向子类的实例。对象的引用和对象的实例之间具有继承/实现的关系。对象引用调用的方法，到底是对哪个类的调用是在运行期才能确定的。多态不能调用只在子类存在父类不存在的方法。如果子类重写了父类的方法，调用的是子类覆盖的方法，否则调用的是父类的方法。
 
+还有一种说法，包括维基百科也说明，认为多态还分为动态多态和静态多态。
+
+一般认为Java中的函数重载是一种静态多态，因为他需要在编译期决定具体调用哪个方法。关于这一点，不同的人有不同的见解，建议在面试中如果被问到，可以这样回答：
+
+“我认为，多态应该是一种运行期特性，Java中的重写是多态的体现。不过也有人提出重载是一种静态多态的想法，这个问题在StackOverflow等网站上有很多人讨论，但是并没有什么定论。我更加倾向于重载不是多态。”
+
+### 方法的重载与重写
+
+重载是就是函数或者方法有同样的名称，但是参数列表不相同的情形，这样的同名不同参数的函数或者方法之间，互相称之为重载函数或者方法。
+
+返回值不同，但是方法名和参数列表都相同的两个方法，不是重载。
+
+重写指的是在Java的子类与父类中有两个名称、参数列表都相同的方法的情况。由于他们具有相同的方法签名，所以子类中的新方法将覆盖父类中原有的方法。
+
+#### 重载和重写的区别
+
+1、重载是一个编译期概念、重写是一个运行期间概念。 
+2、重载遵循所谓“编译期绑定”，即在编译时根据参数变量的类型判断应该调用哪个方法。 
+3、重写遵循所谓“运行期绑定”，即在运行的时候，根据引用变量所指向的实际对象的类型来调用方法
+
 ###### 接口和抽象类的比较
 
-接口和抽象类共同点：不可以被实例化；可以包含抽象方法；抽象类内可以实现方法，java8后接口可以拥有方法的默认实现。
+接口和抽象类共同点：不可以被实例化；可以包含抽象方法；抽象类内可以实现方法，java8后接口才可以拥有方法的默认实现。
 
-接口和抽象类不同点：接口主要是对类的行为进行约束，实现一个接口就具有对应的行为，抽象类主要用于代码复用，强调的是主从关系；接口可以被多个继承，抽象类只能被继承一个；接口内的成员变量是public static final修饰，不能被修改，必须有初始值，抽象类的成员变量默认default赋值，可以被子类重新定义和重新赋值。
+接口和抽象类不同点：
+
+1. 接口主要是对类的行为进行约束，实现一个接口就具有对应的行为，抽象类主要用于代码复用，强调的是主从关系；
+
+2. 接口可以被多个继承，抽象类只能被继承一个；
+
+3. 接口内的方法访问级别必须是public，抽象类的方法可以是public、protected、default；
+
+4. 抽象类可以有构造器，接口不可以；
+
+5. 接口内的成员变量是public static final修饰，不能被修改，必须有初始值，抽象类的成员变量默认default赋值，可以被子类重新定义和重新赋值。
 
 ###### 浅拷贝和深拷贝
 
@@ -103,21 +392,146 @@ R：基数，可以约定为2、4、16
 
 ###### 为什么重写equals方法也要重写hashcode方法呢？相同对象的hashcode一定要相等，所以重写equals方法后，hashcode方法也要重写，根据比较的属性异或得到结果，例如`return name.toUpperCase().hashCode() ^ age;`，这样在把对象放入hashset之类的哈希表结构时才能保证功能正常。
 
-###### String、StringBuilder和StringBuffer的区别
+### String是如何实现不可变的？
 
-String使用final修饰字符数组，且不对外暴露，每次修改String都会创建新对象；StringBuilder和StringBuffer都继承了AbstractStringBuilder类，但是StringBuilder对方法没有加同步锁，是线程不安全的；StringBuffer对方法加了同步锁，是线程安全的。
+我们都知道String是不可变的，但是它是怎么实现的呢？
 
-###### jdk9之后String、StringBuilder和StringBuffer底层都改为字节数组？
+先来看一段String的源码（JDK 1.8）：
 
-java认为大部分情况下的字符串只包含latin-1编码范围内的字符，即一个字节即可表示，使用char（两个字节）表示会浪费一半空间，所以默认使用一个字节表示字符，除非字符中有latin-1无法表示的字符，才会改用utf-16，使用两个字节表示。
+```java
+public final class String
+    implements java.io.Serializable, Comparable<String>, CharSequence {
 
-###### +拼接字符串，java重载了+，底层使用了StringBuilder的append拼接，但是for循环调用+会创建过多StringBuilder对象，对内存还是不友好。
+    /** The value is used for character storage. */
+    private final char value[];
 
-###### String reference3 = new String("a") + new String("b");reference3.intern();这句话创建了几个字符串对象？
+    /** use serialVersionUID from JDK 1.0.2 for interoperability */
+    private static final long serialVersionUID = -6849794470754667710L;
+
+    public String substring(int beginIndex) {
+        if (beginIndex < 0) {
+            throw new StringIndexOutOfBoundsException(beginIndex);
+        }
+        int subLen = value.length - beginIndex;
+        if (subLen < 0) {
+            throw new StringIndexOutOfBoundsException(subLen);
+        }
+        return (beginIndex == 0) ? this : new String(value, beginIndex, subLen);
+    }
+
+    public String concat(String str) {
+        int otherLen = str.length();
+        if (otherLen == 0) {
+            return this;
+        }
+        int len = value.length;
+        char buf[] = Arrays.copyOf(value, len + otherLen);
+        str.getChars(buf, len);
+        return new String(buf, true);
+    }
+}
+```
+
+以上代码，其实就包含了String不可变的主要实现了。
+
+首先，用final修饰类，那么表示这个类是不可以被继承的，那么他里面的方法就是没办法被覆盖的。
+
+其次，用final修饰字符串内容的char[]，那么表示这个字符数组是不可变的。（从JDK 1.9开始，char[]变成了byte[]）
+
+再然后，在他的一些方法中，如substring、concat等，在代码中如果有涉及到字符串的修改，也是通过new String()的方式新建了一个字符串。
+
+所以，通过以上方式，使得一个字符串的内容，一旦被创建出来，就是不可以修改的了。
+
+> 不可变对象是在完全创建后其内部状态保持不变的对象。这意味着，一旦对象被赋值给变量，我们既不能更新引用，也不能通过任何方式改变内部状态。
+
+可是有人会有疑惑，String为什么不可变，我的代码中经常改变String的值啊，如下：
+
+```java
+String s = "abcd";
+s = s.concat("ef");
+```
+
+这样，操作，不就将原本的"abcd"的字符串改变成"abcdef"了么？
+
+但是，虽然字符串内容看上去从"abcd"变成了"abcdef"，但是实际上，我们得到的已经是一个新的字符串了。
+
+![](./pic/java/字符串修改.jpg)
+
+如上图，在堆中重新创建了一个"abcdef"字符串，和"abcd"并不是同一个对象。
+
+所以，一旦一个string对象在内存(堆)中被创建出来，他就无法被修改。而且，String类的所有方法都没有改变字符串本身的值，都是返回了一个新的对象。
+
+如果我们想要一个可修改的字符串，可以选择StringBuffer 或者 StringBuilder这两个代替String。
+
+### String、StringBuilder和StringBuffer的区别
+
+String使用final修饰字符数组，且不对外暴露，每次修改String都会创建新对象；StringBuilder和StringBuffer都继承了AbstractStringBuilder类，但是StringBuilder对方法没有加同步锁，是线程不安全的；
+
+StringBuffer对方法加了同步锁，是线程安全的。
+
+### jdk9之后String、StringBuilder和StringBuffer底层都改为字节数组？
+
+java认为大部分情况下的字符串只包含latin-1编码范围内的字符，即一个字节即可表示，使用char（两个字节）表示会浪费一半空间，所以默认使用一个字节表示字符（字节数组byte[]），除非字符中有latin-1无法表示的字符，才会改用utf-16，使用两个字节表示（字符数组char[]）。
+
+String的内部实现引入了一个名为coder的字段，用于保存这些信息。
+
+```java
+/**
+ * The value is used for character storage.
+ *
+ * @implNote This field is trusted by the VM, and is a subject to
+ * constant folding if String instance is constant. Overwriting this
+ * field after construction will cause problems.
+ *
+ * Additionally, it is marked with {@link Stable} to trust the contents
+ * of the array. No other facility in JDK provides this functionality (yet).
+ * {@link Stable} is safe here, because value is never null.
+ */
+@Stable
+private final byte[] value;
+
+/**
+ * The identifier of the encoding used to encode the bytes in
+ * {@code value}. The supported values in this implementation are
+ *
+ * LATIN1
+ * UTF16
+ *
+ * @implNote This field is trusted by the VM, and is a subject to
+ * constant folding if String instance is constant. Overwriting this
+ * field after construction will cause problems.
+ */
+private final byte coder;
+```
+
+coder字段的取值可以是以下两种
+
+```java
+static final byte LATIN1 = 0;
+static final byte UTF16 = 1;
+```
+
+在很多字符串的相关操作中都需要做一下判断，如：
+
+```java
+public int indexOf(int ch, int fromIndex) {
+    return isLatin1() 
+      ? StringLatin1.indexOf(value, ch, fromIndex) 
+      : StringUTF16.indexOf(value, ch, fromIndex);
+}  
+
+private boolean isLatin1() {
+    return COMPACT_STRINGS && coder == LATIN1;
+}
+```
+
+### +拼接字符串，java重载了+，底层使用了StringBuilder的append拼接，但是for循环调用+会创建过多StringBuilder对象，对内存还是不友好。
+
+### String reference3 = new String("a") + new String("b");reference3.intern();这句话创建了几个字符串对象？
 
 创建一个堆中StringBuilder对象，两个堆中String对象a和b，一个字符串常量池中a字符串，一个字符串常量池中b字符串，一个堆中String对象ab;字符串常量池中没有ab字符串，创建一个字符串常量池中对堆内String对象ab的引用。=7个对象
 
-###### String#intern 方法有什么作用?
+### String#intern 方法有什么作用?
 
 `String.intern()` 是一个 native（本地）方法，其作用是将指定的字符串对象的引用保存在字符串常量池中，可以简单分为两种情况：
 
@@ -440,7 +854,7 @@ unsafe提供cas功能，AtomicInteger等原子类也是调用对应的方法，�
 
 ###### Java只有值传递
 
-原因可能是为了安全性，对于方法调用者来说，方法实现是未知的，使用值传递可以保证一部分的数据是无法被修改的。为了简单易用，避免引用传递产生的语义不理解，java实现只有值传递。
+原因可能是为了安全性，对于方法调用者来说，方法实现是未知的，使用值传递可以保证一部分的数据是无法被修改的。为了简单易用，避免引用传递产生的语义不理解，java实现只有值传递。原始参数通过值传递给方法。这意味着对参数值的任何更改都只存在于方法的范围内。当方法返回时，参数将消失，对它们的任何更改都将丢失。引用数据类型参数(如对象)也按值传递给方法。这意味着，当方法返回时，传入的引用仍然引用与以前相同的对象。但是，如果对象字段具有适当的访问级别，则可以在方法中更改这些字段的值。Java中的对象传递，如果是修改引用，是不会对原来的对象有任何影响的，但是如果直接修改共享对象的属性的值，是会对原来的对象有影响的。
 
 ###### Java异常体系
 

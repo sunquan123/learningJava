@@ -312,13 +312,13 @@ R：基数，可以约定为2、4、16
 
 ###### 什么是可变长参数？可变参数只能作为函数的最后一个参数，但其前面可以有也可以没有任何其他参数。遇到方法重载的情况怎么办呢？会优先匹配固定参数还是可变参数的方法呢？答案是会优先匹配固定参数的方法，因为固定参数的方法匹配度更高。
 
-###### 面向对象和面向过程的区别
+### 面向对象和面向过程的区别
 
 面向过程指的是把解决问题的过程拆成一个一个方法，通过方法的执行完成功能。
 
 面向对象指的是先抽象出对象，通过对象执行方法的方式完成功能。面向对象更易维护、更易复用、更易拓展。
 
-###### 面向对象的五大基本原则？
+### 面向对象的五大基本原则？
 
 五大基本原则：单一职责原则（Single-Responsibility Principle）、开放封闭原则（Open-Closed principle）、Liskov替换原则（Liskov-Substituion Principle）、依赖倒置原则（Dependency-Inversion Principle）和 接口隔离原则（Interface-Segregation Principle）。  
 
@@ -332,7 +332,7 @@ R：基数，可以约定为2、4、16
 
 接口隔离原则：使用多个小的专门的接口，而不要使用一个大的总接口
 
-###### 类的构造方法
+### 类的构造方法
 
 我们不定义类的构造方法的话，java会添加一个默认的无参构造方法，我们添加了一个（无论是否有参）构造方法，java就不会添加默认了。所以我们重载构造方法时，一定要加上无参构造方法。构造方法可以被重载，不可被重写。构造方法必须与类名相同，没有返回值，但不可以用void。new的时候调用构造方法。
 
@@ -362,13 +362,13 @@ R：基数，可以约定为2、4、16
 
 重写指的是在Java的子类与父类中有两个名称、参数列表都相同的方法的情况。由于他们具有相同的方法签名，所以子类中的新方法将覆盖父类中原有的方法。
 
-#### 重载和重写的区别
+### 重载和重写的区别
 
 1、重载是一个编译期概念、重写是一个运行期间概念。 
 2、重载遵循所谓“编译期绑定”，即在编译时根据参数变量的类型判断应该调用哪个方法。 
 3、重写遵循所谓“运行期绑定”，即在运行的时候，根据引用变量所指向的实际对象的类型来调用方法
 
-###### 接口和抽象类的比较
+### 接口和抽象类的比较
 
 接口和抽象类共同点：不可以被实例化；可以包含抽象方法；抽象类内可以实现方法，java8后接口才可以拥有方法的默认实现。
 
@@ -384,13 +384,121 @@ R：基数，可以约定为2、4、16
 
 5. 接口内的成员变量是public static final修饰，不能被修改，必须有初始值，抽象类的成员变量默认default赋值，可以被子类重新定义和重新赋值。
 
-###### 浅拷贝和深拷贝
+### 浅拷贝和深拷贝
 
 浅拷贝是指在堆上创建一个新对象，不过如果对象属性也是一个引用，那么这个引用会被拷贝过来直接使用。深拷贝是指在堆上创建一个新对象，包括重新创建对象内部的引用对象。
+
+#### 实现深拷贝
+
+##### 实现Cloneable接口，重写clone()
+
+在Object类中定义了一个clone方法，这个方法其实在不重写的情况下，其实也是浅拷贝的。如果想要实现深拷贝，就需要重写clone方法，而想要重写clone方法，就必须实现Cloneable，否则会报CloneNotSupportedException异常。
+
+```java
+public class Address implements Cloneable{
+    private String province;
+    private String city;
+    private String area;
+    //省略构造函数和setter/getter
+
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+        return super.clone();
+    }
+}
+
+class User implements Cloneable{
+    private String name;
+    private String password;
+    private HomeAddress address;
+    //省略构造函数和setter/getter
+
+    @Override
+    protected Object clone() throws CloneNotSupportedException {
+        User user = (User)super.clone();
+        user.setAddress((HomeAddress)address.clone());
+        return user;
+    }
+}
+```
+
+之后，在执行一下上面的测试代码，就可以发现，这时候newUser中的address对象就是一个新的对象了。
+
+这种方式就能实现深拷贝，但是问题是如果我们在User中有很多个对象，那么clone方法就写的很长，而且如果后面有修改，在User中新增属性，这个地方也要改。
+
+那么，有没有什么办法可以不需要修改，一劳永逸呢？
+
+##### 序列化实现深拷贝
+
+我们可以借助序列化来实现深拷贝。先把对象序列化成流，再从流中反序列化成对象，这样就一定是新的对象了。  序列化的方式有很多，比如我们可以使用各种JSON工具，把对象序列化成JSON字符串，然后再从字符串中反序列化成对象。如使用fastjson实现。
+
+除此之外，还可以使用Apache Commons Lang中提供的SerializationUtils工具实现。
+
+我们需要修改下上面的User和Address类，使他们实现Serializable接口，否则是无法进行序列化的。
+
+```java
+class User implements Serializable
+class Address implements Serializable
+User newUser = (User) SerializationUtils.clone(user);
+```
 
 ###### hashcode()返回的一定是对象地址吗？不一定，不同的jdk实现hashcode也不同，有的使用一些算法来实现，有的使用内存地址
 
 ###### 为什么重写equals方法也要重写hashcode方法呢？相同对象的hashcode一定要相等，所以重写equals方法后，hashcode方法也要重写，根据比较的属性异或得到结果，例如`return name.toUpperCase().hashCode() ^ age;`，这样在把对象放入hashset之类的哈希表结构时才能保证功能正常。
+
+### String为什么是不可变的？
+
+#### 缓存
+
+字符串是使用最广泛的数据结构。大量的字符串的创建是非常耗费资源的，所以，Java提供了对字符串的缓存功能，可以大大的节省堆空间。
+
+JVM中专门开辟了一部分空间来存储Java字符串，那就是字符串池。
+
+通过字符串池，两个内容相同的字符串变量，可以从池中指向同一个字符串对象，从而节省了关键的内存资源。
+
+```java
+String s = "abcd";
+String s2 = s;
+```
+
+对于这个例子，s和s2都表示"abcd"，所以他们会指向字符串池中的同一个字符串对象：
+
+![](./pic/java/字符串.jpg)
+
+但是，之所以可以这么做，主要是因为字符串的不变性。试想一下，如果字符串是可变的，我们一旦修改了s的内容，那必然导致s2的内容也被动的改变了，这显然不是我们想看到的。
+
+#### 安全性
+
+字符串类在Java应用程序中广泛用于存储敏感信息，如用户名、密码、连接url、网络连接等。JVM类加载器在加载类的时也广泛地使用它。
+
+因此，保护String类对于提升整个应用程序的安全性至关重要。
+
+当我们在程序中传递一个字符串的时候，如果这个字符串的内容是不可变的，那么我们就可以相信这个字符串中的内容。
+
+但是，如果是可变的，那么这个字符串内容就可能随时都被修改。那么这个字符串内容就完全不可信了。这样整个系统就没有安全性可言了。
+
+例如，我们建立数据库连接时：
+
+```java
+boolean connect(string s){
+if (!isSecure(s)) { throw new SecurityException(); }
+// 如果在其他地方可以修改String,那么此处就会引起各种预料不到的问题/错误
+causeProblem(s); }
+```
+
+这里如果第一步判断安全性通过之后，其他线程修改了字符串内容，这里的连接操作就不再安全。
+
+#### hashcode缓存
+
+由于字符串对象被广泛地用作数据结构，它们也被广泛地用于哈希实现，如HashMap、HashTable、HashSet等。在对这些散列实现进行操作时，经常调用hashCode()方法。
+
+不可变性保证了字符串的值不会改变。因此，hashCode()方法在String类中被重写，以方便缓存，这样在第一次hashCode()调用期间计算和缓存散列，并从那时起返回相同的值。
+
+因此在String类中，有以下代码：
+
+```java
+private int hash;//this is used to cache hash code.
+```
 
 ### String是如何实现不可变的？
 
@@ -566,7 +674,79 @@ public class StringTest {
 }
 ```
 
-###### try、catch、finally知识
+### String有长度限制吗？是多少？
+
+编译期需要用CONSTANT_Utf8_info 结构用于表示字符串常量的值，而这个结构是有长度限制，他的限制是65535。
+
+运行期，String的length参数是Int类型的，那么也就是说，String定义的时候，最大支持的长度就是int的最大范围值。根据Integer类的定义，java.lang.Integer#MAX_VALUE的最大值是2^31 - 1。
+
+### 常见的字符编码有哪些？有什么区别？
+
+由于ASCII只有128个字符，虽然对于英文字符都可以表示了，但是世界上还有很多其他的文字他是没办法表示的，所以需要一种更加全面的字符编码。  
+
+于是又出现了Unicode字符集（常见的Unicode Transformation Format有：UTF-7, UTF-7.5, UTF-8,UTF-16, 以及 UTF-32），除此之外还有一些常用的中文编码有GBK，GB2312，GB18030等。
+
+### Unicode和UTF-8有啥关系？
+
+Unicode（中文：万国码、国际码、统一码、单一码）是计算机科学领域里的一项业界标准。它对世界上大部分的文字系统进行了整理、编码，使得计算机可以用更为简单的方式来呈现和处理文字。
+
+但是，Unicode虽然统一了全世界字符的编码，但没有规定如何存储。
+
+因为如果Unicode统一规定，每个符号就要用三个或四个字节表示，因为字符太多，只能用这么多字节才能表示完全。一旦这么规定，那么每个英文字母前都必然有二到三个字节是0，因为所有英文字母在ASCII中都有，都可以用一个字节表示，剩余字节位置就要补充0。如果这样，文本文件的大小会因此大出二三倍，这对于存储来说是极大的浪费。
+
+为了解决这个问题，就出现了一些中间格式的字符集，他们被称为通用转换格式，即UTF（Unicode Transformation Format）。常见的UTF格式有：UTF-7, UTF-7.5, UTF-8,UTF-16, 以及 UTF-32。
+
+UTF-8 使用一至四个字节为每个字符编码
+UTF-16 使用二或四个字节为每个字符编码
+UTF-32 使用四个字节为每个字符编码  
+
+所以我们可以说，UTF-8、UTF-16等都是 Unicode 的一种实现方式。
+
+### 有了UTF-8，为什么要出现GBK
+
+因为UTF-8是Unicode的一种实现，所以他包含了世界上的所有文字的编码，他采用的是1-4字节进行编码。
+
+正是因为UTF-8太全了，所以那些晚一些纳入的字符，在UTF-8中的存储所占的字节数可能就会多一些，那他的存储空间要求就会很大。对于常用的汉字，在UTF-8中采用3字节进行编码，但是如果有一种只包含中文和ASCII的编码的话，就不需要使用3个字节，可能2个字节就够了。
+
+对于大部分网站来说，基本都是只服务一个国家或者地区的，比如一个中国的网站，一般会出现简体字和繁体字以及一些英文字符，很少会出现日语或者韩文的。
+
+也是出于这样的考虑，中国国家标准总局于1981年制定并实施了 GB 2312-80 编码，即中华人民共和国国家标准简体中文字符集。后来厂商微软利用GB 2312-80未使用的编码空间，收录GB 13000.1-93全部字符制定了GBK编码。
+
+有了标准中文字符集，如果是一个纯中文网站，就可以可以采用这种编码方式，这样可以大大节省一些存储空间的。
+
+常用的中文编码有GBK，GB2312，GB18030等，最常用的是GBK。
+
+- GB2312（1980年）：16位字符集，收录有6763个简体汉字，682个符号，共7445个字符；
+  
+  - 优点：适用于简体中文环境，属于中国国家标准，通行于大陆，新加坡等地也使用此编码；
+  
+  - 缺点：不兼容繁体中文，其汉字集合过少。
+
+- GBK（1995年）：16位字符集，收录有21003个汉字，883个符号，共21886个字符；
+  
+  - 优点：适用于简繁中文共存的环境，为简体Windows所使用，向下完全兼容gb2312，向上支持 ISO-10646 国际标准 ；所有字符都可以一对一映射到unicode2.0上；
+  
+  - 缺点：不属于官方标准，和big5之间需要转换；很多搜索引擎都不能很好地支持GBK汉字。
+
+- GB18030（2000年）：32位字符集；收录了27484个汉字，同时收录了藏文、蒙文、维吾尔文等主要的少数民族文字。
+  
+  - 优点：可以收录所有你能想到的文字和符号，属于中国最新的国家标准；
+  
+  - 缺点：目前支持它的软件较少。
+
+#### 为什么会出现乱码
+
+文件里面的内容归根到底都是有0101组成的，至于0101的二进制码如何转成人们可以理解的字符串，则是需要通过规定好的字符编码标准进行转换才可以。
+
+我们把一串中文字符通过UTF-8进行编码传输给别人，别人拿到这串文字之后，通过GBK进行解码，得到的内容就会是“锟届瀿锟斤拷雮傡锟斤拷直锟斤拷锟”，这就是乱码。
+
+### RPC接口返回中，使用基本类型还是包装类？
+
+使用包装类，不要使用基本类型，比如某个字段表示费率的Float rate,在接口中返回时，如果出现接口异常的情况，那么可能会返回默认值，float的话返回的是0.0，而Float返回的是null。
+
+在接口中，为了避免发生歧义，建议使用对象，因为他默认值是null，当看到null的时候，我们明确的知道他是出错了，但是看到0.0的时候，你不知道是因为出错返回的0.0，还是就是不出错真的返回了0.0，虽然可以用其他的字段如错误码或者getSuccess判断，但是还是尽量减少歧义的可能。
+
+### try、catch、finally知识
 
 如果在try和finally中都有return，则try中的return会被暂存起来，等到执行finally代码到return时，实际return的值是finally中的return。
 
@@ -576,17 +756,276 @@ finally中的代码一定会被执行吗？
 
 如果执行finally代码前虚拟机终止了，则不会执行后面代码；程序的线程终止了，也不会执行finally里面代码。
 
-try-with-resource可以代替finally关闭流的作用
+try-with-resource可以代替finally关闭流的作用。
 
-###### 泛型类、泛型接口、泛型方法
+### 泛型类、泛型接口、泛型方法
 
-###### 反射
+Java泛型（generics） 是JDK 5中引入的一个新特性，允许在定义类和接口的时候使用类型参数（type parameter）。声明的类型参数在使用时用具体的类型来替换。泛型最主要的应用是在JDK 5中的新集合类框架中。
 
-优点：给予了框架提供开箱即用的能力，使代码更灵活
+泛型的好处有两个：
 
-缺点：有安全问题，避开了泛型的安全检查，运行时性能较慢
+1. 方便：可以提高代码的复用性。以List接口为例，我们可以将String、Integer等类型放入List中，如不用泛型，存放String类型要写一个List接口，存放Integer要写另外一个List接口，泛型可以很好的解决这个问题
 
-应用场景：动态代理的实现依赖反射；框架中的注解使用到了反射：分析类得到类、方法、注解信息
+2. 安全：在泛型出之前，通过Object实现的类型转换需要在运行时检查，如果类型转换出错，程序直接GG，可能会带来毁灭性打击。而泛型的作用就是在编译时做类型检查，这无疑增加程序的安全性
+
+#### 泛型是如何实现的
+
+Java中的泛型通过类型擦除的方式来实现，通俗点理解，就是通过语法糖的形式，在.java->.class转换的阶段，将List\<String>擦除调转为List的手段。换句话说，Java的泛型只在编译期，Jvm是不会感知到泛型的。
+
+类型擦除的缺点有哪些？
+
+1. 泛型不可以重载
+
+2. 泛型异常类不可以多次catch
+
+3. 泛型类中的静态变量也只有一份，不会有多份
+
+#### 泛型中上下界限定符extends 和 super有什么区别？
+
+<? extends T> 表示类型的上界，表示参数化类型的可能是T 或是 T的子类。
+
+<? super T> 表示类型下界（Java Core中叫超类型限定），表示参数化类型是此类型的超类型（父类型），直至Object。
+
+在使用 限定通配符的时候，需要遵守PECS原则，即Producer Extends, Consumer Super；上界生产，下界消费。
+
+如果要从集合中读取类型T的数据，并且不能写入，可以使用 ? extends 通配符；(Producer Extends)。
+
+如果要从集合中写入类型T的数据，并且不需要读取，可以使用 ? super 通配符；(Consumer Super)。
+
+如果既要存又要取，那么就不要使用任何通配符。
+
+
+#### List, List\<Object>, List之间的区别
+
+List<?>
+
+是一个未知类型的List，而List\<Object> 其实是任意类型的List。可以把List\<String>, List\<Integer>赋值给List<?>，却不能把List\<String>赋值给 List\<Object>
+
+可以把任何带参数的类型传递给原始类型List，但却不能把List\<String>赋值给List\<Object>，因为会产生编译错误（不支持协变）
+
+#### 在泛型为Integer的ArrayList中存放一个String类型的对象
+
+通过反射可以实现：
+
+```java
+public void test() throws Exception {
+    ArrayList<Integer> list = new ArrayList<Integer>();
+    Method method = list.getClass().getMethod("add", Object.class);
+    method.invoke(list, "Java反射机制实例");
+    System.out.println(list.get(0));
+}
+```
+
+#### 什么是类型擦除？
+
+类型擦除就是在编译期将我们写的代码：
+
+```java
+public class Foo<T> {
+    T bar;
+    void doSth(T param) {
+    }
+};
+
+Foo<String> f1;
+Foo<Integer> f2;
+```
+
+在编译后的字节码文件中，会把泛型的信息擦除掉：
+
+```java
+public class Foo {
+    Object bar;
+    void doSth(Object param) {
+    }
+};
+```
+
+也就是说，在代码中的Foo 和 Foo使用的类，经过编译后都是同一个类。
+
+这种擦除的过程，被称之为——类型擦除。所以类型擦除指的是通过类型参数合并，将泛型类型实例关联到同一份字节码上。编译器只为泛型类型生成一份字节码，并将其实例关联到这份字节码上。类型擦除的关键在于从泛型类型中清除类型参数的相关信息，并且再必要的时候添加类型检查和类型转换的方法。
+
+类型擦除可以简单的理解为将泛型java代码转换为普通java代码，只不过编译器更直接点，将泛型java代码直接转换成普通java字节码。
+
+#### C语言对泛型的支持
+
+泛型是一种编程范式，在不同的语言和编译器中的实现和支持方式都不一样。
+
+通常情况下，一个编译器处理泛型有多种方式，在C++中，当编译器对以下代码编译时：
+
+```cpp
+template<typename T>
+struct Foo
+{
+    T bar;
+    void doSth(T param) {
+    }
+};
+
+Foo<int> f1;
+Foo<float> f2;
+```
+
+当编译器对其进行编译时，编译器发现要用到Foo和Foo，这时候就会为每一个泛型类新生成一份执行代码。相当于新创建了如下两个类：
+
+```cpp
+struct FooInt
+{
+    int bar;
+    void doSth(int param) {
+    }
+};
+
+struct FooFloat
+{
+    float bar;
+    void doSth(float param) {
+    }
+};
+```
+
+这种做法，用起来的时候很方便，只需要根据具体类型找到具体的的类和方法就行了。但是问题是，当我们多次使用不同类型的模板时，就会创建出来的很多新的类，就会导致代码膨胀。
+
+#### 泛型中K T V E ？ Object等分别代表什么含义
+
+E – Element (在集合中使用，因为集合中存放的是元素) 
+T – Type（Java 类）
+K – Key（键）
+V – Value（值）
+N – Number（数值类型）
+？ – 表示不确定的java类型（无限制通配符类型）
+S、U、V – 2nd、3rd、4th types
+Object – 是所有类的根类，任何类的对象都可以设置给该Object引用变量，使用的时候可能需要类型强制转换，但是用使用了泛型T、E等这些标识符后，在实际用之前类型就已经确定了，不需要再进行类型强制转换。
+
+```java
+// 示例1：使用T作为泛型类型参数，表示任何类型
+public class MyGenericClass<T> {
+    private T myField;
+
+    public MyGenericClass(T myField) {
+        this.myField = myField;
+    }
+
+    public T getMyField() {
+        return myField;
+    }
+}
+
+// 示例2：使用K、V作为泛型类型参数，表示键值对中的键和值的类型
+public class MyMap<K, V> {
+    private List<Entry<K, V>> entries;
+
+    public MyMap() {
+        entries = new ArrayList<>();
+    }
+
+    public void put(K key, V value) {
+        Entry<K, V> entry = new Entry<>(key, value);
+        entries.add(entry);
+    }
+
+    public V get(K key) {
+        for (Entry<K, V> entry : entries) {
+            if (entry.getKey().equals(key)) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
+    private class Entry<K, V> {
+        private K key;
+        private V value;
+
+        public Entry(K key, V value) {
+            this.key = key;
+            this.value = value;
+        }
+
+        public K getKey() {
+            return key;
+        }
+
+        public V getValue() {
+            return value;
+        }
+    }
+}
+
+// 示例3：使用E作为泛型类型参数，表示集合中的元素类型
+public class MyList<E> {
+    private List<E> elements;
+
+    public MyList() {
+        elements = new ArrayList<>();
+    }
+
+    public void add(E element) {
+        elements.add(element);
+    }
+
+    public E get(int index) {
+        return elements.get(index);
+    }
+}
+
+// 示例4：使用Object作为泛型类型参数，表示可以接受任何类型
+public class MyGenericClass {
+    private Object myField;
+
+    public MyGenericClass(Object myField) {
+        this.myField = myField;
+    }
+
+    public Object getMyField() {
+        return myField;
+    }
+}
+```
+
+### 反射
+
+反射机制指的是程序在运行时能够获取自身的信息。在java中，只要给定类的名字，那么就可以通过反射机制来获得类的所有属性和方法。
+
+Java的反射可以：
+
+1. 在运行时判断任意一个对象所属的类。
+
+2. 在运行时判断任意一个类所具有的成员变量和方法。
+
+3. 在运行时任意调用一个对象的方法
+
+4. 在运行时构造任意一个类的对象
+
+优点：可以提升程序的灵活性和扩展性，比较容易在运行期干很多事情
+
+缺点：反射破坏了封装性、反射代码执行的性能低、代码可读性低及可维护性
+
+应用场景：
+
+1. 动态代理
+
+2. JDBC的class.forName
+
+3. BeanUtils中属性值的拷贝
+
+4. RPC框架
+
+5. ORM框架
+
+6. Spring的IOC/DI
+
+7. 框架中的注解使用到了反射：分析类得到类、方法、注解信息
+
+反射为什么慢呢？主要由以下几个原因：
+
+1. 由于反射涉及动态解析的类型，因此不能执行某些Java虚拟机优化，如JIT优化。
+
+2. 在使用反射时，参数需要包装（boxing)成Object[] 类型，但是真正方法执行的时候，又需要再拆包（unboxing)成真正的类型，这些动作不仅消耗时间，而且过程中也会产生很多对象，对象一多就容易导致GC，GC也会导致应用变慢。
+
+3. 反射调用方法时会从方法数组中遍历查找，并且会检查可见性。这些动作都是耗时的。
+
+4. 不仅方法的可见性要做检查，参数也需要做很多额外的检查。
 
 例子：
 
@@ -644,17 +1083,97 @@ public class Test {
 }
 ```
 
-###### 注解
+#### 反射和Class的关系
+
+Java的Class类是java反射机制的基础,通过Class类我们可以获得关于一个类的相关信息。
+
+Java.lang.Class是一个比较特殊的类，它用于封装被装入到JVM中的类（包括类和接口）的信息。当一个类或接口被装入的JVM时便会产生一个与之关联的java.lang.Class对象，可以通过这个Class对象对被装入类的详细信息进行访问。
+
+虚拟机为每种类型管理一个独一无二的Class对象。也就是说，每个类（型）都有一个Class对象。运行程序时，Java虚拟机(JVM)首先检查所要加载的类对应的Class对象是否已经加载。如果没有加载，JVM就会根据类名查找.class文件，并将其Class对象载入。
+
+#### 反射破坏单例
+
+### 注解
 
 是java5开始提供的功能，是特殊的注释，可用于类、方法、变量上，用于在编译期/运行期提供信息，本质是一个继承了Annotation的特殊接口
 
 解析方式：部分注解如override在编译器编译代码时处理，用于检查是否子类重写了父类方法；部分注解在运行期间由框架根据反射技术分析类进行处理。
 
-###### SPI
+### 什么是元注解？
 
-Service Provider Interface，即服务提供者的接口。API是由服务实现者提供接口和实现，由服务调用者直接调用服务提供者的接口达到服务调用。SPI是由服务调用者提供接口规则，由服务提供者实现接口内容。
+元注解定义其他注解的注解 。比如Override这个注解，就不是一个元注解。而是通过元注解定义出来的。
 
-应用场景：Spring框架、数据库驱动
+元注解有四个:@Target（表示该注解可以用于什么地方）、@Retention（表示在什么级别保存该注解信息）、@Documented（将此注解包含在javadoc中）、@Inherited（允许子类继承父类中的注解）。
+
+#### @Retention
+
+指定被修饰的注解的生命周期，即注解在源代码、编译时还是运行时保留。它有三个可选的枚举值：SOURCE、CLASS和RUNTIME。默认为CLASS。
+
+```java
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+
+@Retention(RetentionPolicy.RUNTIME)
+public @interface MyRuntimeAnnotation {
+    // some elements and values
+}
+```
+
+#### @Target
+
+指定被修饰的注解可以应用于的元素类型，如类、方法、字段等。这样可以限制注解的使用范围，避免错误使用。
+
+```java
+import java.lang.annotation.Target;
+import java.lang.annotation.ElementType;
+
+@Target({ElementType.TYPE, ElementType.METHOD})
+public @interface MyTargetAnnotation {
+    // some elements and values
+}
+```
+
+#### @Documented
+
+用于指示注解是否会出现在生成的Java文档中。如果一个注解被@Documented元注解修饰，则该注解的信息会出现在API文档中，方便开发者查阅。
+
+```java
+import java.lang.annotation.Documented;
+
+@Documented
+public @interface MyDocumentedAnnotation {
+    // some elements and values
+}
+```
+
+#### @Inherited
+
+指示被该注解修饰的注解是否可以被继承。默认情况下，注解不会被继承，即子类不会继承父类的注解。但如果将一个注解用@Inherited修饰，那么它就可以被子类继承。
+
+```java
+import java.lang.annotation.Inherited;
+
+@Inherited
+public @interface MyInheritedAnnotation {
+    // some elements and values
+}
+```
+
+### SPI
+
+Service Provider Interface，即服务提供者的接口。API是一组定义了软件组件之间交互的规则和约定的接口。提供方来制定接口并完成对接口的不同实现，调用方只需要调用即可。SPI是一种扩展机制，通常用于在应用程序中提供可插拔的实现。 调用方可选择使用提供方提供的内置实现，也可以自己实现。
+
+API用于定义调用接口，而SPI用于定义和提供可插拔的实现方式。
+
+应用场景：
+
+1. Spring中大量使用了SPI,比如：对servlet3.0规范对ServletContainerInitializer的实现、自动类型转换Type Conversion SPI(Converter SPI、Formatter SPI)等
+
+2. 数据库驱动
+
+3. SLF4J加载不同提供商的日志实现类
+
+4. Dubbo中也大量使用SPI的方式实现框架的扩展, 不过它对Java提供的原生SPI做了封装，允许用户扩展实现Filter接口
 
 优点：提供更高的代码灵活性、可拓展性、可维护性，将服务实现者和服务提供者接口解耦开来，避免实现逻辑污染调用方代码。
 
@@ -664,7 +1183,7 @@ Service Provider Interface，即服务提供者的接口。API是由服务实现
 
 基本原理：通过Serviceloader加载接口和实现类。ServiceLoader读取META-INF/services文件夹下所有文件名为接口，文件内容为实现类名的文件，根据内容调用反射生成对应的实现类。
 
-###### 序列化和反序列化
+### 序列化和反序列化
 
 应用场景：将对象放到网络中传输；存储到文件；存储到数据库；存储到内存中
 
@@ -676,17 +1195,74 @@ Service Provider Interface，即服务提供者的接口。API是由服务实现
 
 不推荐JDK自带协议：不支持跨语言调用；JDK自带协议生成的字节数组较大，传输体积较大，效率较低；当反序列化时，攻击者可以操作反序列化数组达到修改生成对象内容的效果，存在安全问题。
 
-###### IO流
+### serialVersionUID 有何用途? 如果没定义会有什么问题？
+
+在进行反序列化时，JVM会把传来的字节流中的serialVersionUID与本地相应实体类的serialVersionUID进行比较，如果相同就认为是一致的，可以进行反序列化，否则就会出现序列化版本不一致的异常，即是InvalidCastException。这样做是为了保证安全，因为文件存储中的内容可能被篡改。
+
+当实现java.io.Serializable接口的类没有显式地定义一个serialVersionUID变量时候，Java序列化机制会根据编译的Class自动生成一个serialVersionUID作序列化版本比较用，这种情况下，如果Class文件没有发生变化，就算再编译多次，serialVersionUID也不会变化的。但是，如果发生了变化，那么这个文件对应的serialVersionUID也就会发生变化。
+
+基于以上原理，如果我们一个类实现了Serializable接口，但是没有定义serialVersionUID，然后序列化。在序列化之后，由于某些原因，我们对该类做了变更，重新启动应用后，我们想对之前序列化过的对象进行反序列化的话就会报错。
+
+### 你知道fastjson的反序列化漏洞吗
+
+当一个类中包含了一个接口（或抽象类）的时候，在使用fastjson进行序列化的时候，会将子类型抹去，只保留接口（抽象类）的类型，使得反序列化时无法拿到原始类型。
+
+```java
+{
+    "fruit":{
+        "price":0.5
+    },
+    "name":"Hol
+```
+
+那么有什么办法解决这个问题呢，fastjson引入了AutoType，即在序列化的时候，把原始类型记录下来。使用autotype注解之后的json对象如下：
+
+```java
+{
+    "@type":"com.hollis.lab.fastjson.test.Store",
+    "fruit":{
+        "@type":"com.hollis.lab.fastjson.test.Apple",
+        "price":0.5
+    },
+    "name":"Hollis"
+}
+```
+
+可以看到fastjson使用@type属性指定了这个类的全路径，方便在反序列化的时候定位到具体类型。
+
+这就是AutoType，以及fastjson中引入AutoType的原因。
+
+因为有了autoType功能，那么fastjson在对JSON字符串进行反序列化的时候，就会读取@type到内容，试图把JSON内容反序列化成这个对象，并且会调用这个类的setter方法。
+
+那么就可以利用这个特性，自己构造一个JSON字符串，并且使用@type指定一个自己想要使用的攻击类库。
+
+举个例子，黑客比较常用的攻击类库是com.sun.rowset.JdbcRowSetImpl，这是sun官方提供的一个类库，这个类的dataSourceName支持传入一个rmi的源，当解析这个uri的时候，就会支持rmi远程调用，去指定的rmi地址中去调用方法。
+
+而fastjson在反序列化时会调用目标类的setter方法，那么如果黑客在JdbcRowSetImpl的dataSourceName中设置了一个想要执行的命令，那么就会导致很严重的后果。
+
+如通过以下方式定一个JSON串，即可实现远程命令执行（在早期版本中，新版本中JdbcRowSetImpl已经被加了黑名单）
+
+```java
+{"@type":"com.sun.rowset.JdbcRowSetImpl",
+"dataSourceName":"rmi://localhost:1099/Exploit",
+"autoCommit":true}
+```
+
+### IO流
 
 java IO流分为字符流和字节流：InputStreamReader/OutputStreamWriter，InputStream/OutputStream
 
-###### 语法糖
+### 语法糖
 
 java语法糖包括：枚举、自动装箱、自动拆箱、可变长参数、泛型、switch字符串、条件编译、数值字面量中有下划线、增强for循环(for(aa  a: collection){})、try-with-resource、lambda表达式
 
 switch本来不支持字符串，只支持short、char、int、long整数类型和枚举类型，且都会转换成整数类型进行判断。java7开始支持String，后面也支持了Character, Byte, Short, Integer。字符串类型的switch会被转换成hashcode比较+equals比较，性能上比基本数据类型差一点。
 
 泛型是在编译期被擦除的类型，等到真正调用时才传入具体的类，调用处使用父类来接收。
+
+一个Iterator\<A> xi = xs.iterator();会被编译成Iterator xi = xs.iterator();
+
+一个A w = xi.next();会被编译成Comparable w = (Comparable)xi.next();
 
 可变长参数类似String... args，在编译后转换成对应类型的数组String args[]。
 
@@ -700,21 +1276,41 @@ switch本来不支持字符串，只支持short、char、int、long整数类型�
 
 增强for循环，for(Student stu:studentArr)->int length = studentArr.length;for(int i=0;io<length;i++)。对于容器类list的for循环会被转换成迭代器的循环。
 
-try-with-resource其实也是转换后会被编译成try-catch的代码。
+try-with-resource其实也是转换后会被编译成try-catch-finally的代码，关闭资源操作在finally代码中。
 
 lambda表达式在编译时会转换成几个jvm提供的lambda api方法，并将内部匿名方法提取出来成独立方法进行调用，以此达到目的。
 
+内部类之所以也是语法糖，是因为它仅仅是一个编译时的概念，outer.java里面定义了一个内部类inner，一旦编译成功，就会生成两个完全不同的.class文件了，分别是outer.class和outer$inner.class。
+
 特殊情况：
 
-1. 方法重载时仅仅是参数的泛型类不同，此时编译器会报错，因为泛型擦除后方法就一样了。random(List<String> names)和random(List<Integer> names)就不允许编译了。
+1. 方法重载时仅仅是参数的泛型类不同，此时编译器会报错，因为泛型擦除后方法就一样了。random(List\<String> names)和random(List\<Integer> names)就不允许编译了。
 
 2. 泛型类的静态变量在运行时与所有泛型类实现类共享，可被任意改变。
+   
+   ```java
+   public class StaticTest{
+       public static void main(String[] args){
+           GT<Integer> gti = new GT<Integer>();
+           gti.var=1;
+           GT<String> gts = new GT<String>();
+           gts.var=2;
+           System.out.println(gti.var);
+       }
+   }
+   class GT<T>{
+       public static int var=0;
+       public void nothing(T x){}
+   }
+   ```
+   
+   以上代码输出结果为：2！由于经过类型擦除，所有的泛型类实例都关联到同一份字节码上，泛型类的所有静态变量是共享的。
 
 3. 自动装拆箱时，Integer等包装类对128内的数字用了缓存池，比较时有可能一样。
 
 4. for循环时删除元素，会抛出cocurrentModificationException，可以用iterator循环处理，并删除元素。
 
-###### final
+### final
 
 放在类上，类无法被继承
 
@@ -722,7 +1318,7 @@ lambda表达式在编译时会转换成几个jvm提供的lambda api方法，并�
 
 放在变量上，基本数据类型无法被修改，引用数据类型无法被重新引用
 
-###### static
+### static
 
 静态成员变量和静态方法：静态成员变量属于类，可以直接由类调用，在java虚拟机方法区存储；静态方法只能调用类的静态成员变量；
 
@@ -748,7 +1344,7 @@ lambda表达式在编译时会转换成几个jvm提供的lambda api方法，并�
 
 - (5)对子类成员数据按照它们声明的顺序初始化，执行子类构造函数的其余部分。
 
-###### 代理模式
+### 代理模式
 
 静态代理：从应用和实现角度来看，静态代理需要手动编写代理类，将代理对象需要增加的功能写进代理类中。从JVM角度，接口、被代理类、静态代理类都在编译期间被生成成对应的class。
 
@@ -758,7 +1354,13 @@ JDK动态代理：原理是代理类实现一个InvocationHandler接口和invoke
 
 CGLIB动态代理：使用了ASM的字节码增强库实现，基于继承实现类的方法代理。本质上是实现了被代理类的子类完成方法的拦截调用，优点是不需要类实现接口就可以代理方法，缺点是无法代理final修饰的方法，性能不如JDK。
 
-###### 内部类
+### 动态代理的用途
+
+Java的动态代理，在日常开发中可能并不经常使用，但是并不代表他不重要。Java的动态代理的最主要的用途就是应用在各种框架中。因为使用动态代理可以很方便的运行期生成代理类，通过代理类可以做很多事情，比如AOP，比如过滤器、拦截器等。
+
+在我们平时使用的框架中，像servlet的filter、包括spring提供的aop以及struts2的拦截器都使用了动态代理功能。我们日常看到的mybatis分页插件，以及日志拦截、事务拦截、权限拦截这些几乎全部由动态代理的身影。
+
+### 内部类
 
 成员内部类可以直接访问外部类的成员变量，即使是private的。内部类的存在可以弥补类的单继承带来的缺陷，可以在类里面创建多个内部类继承多个类完成功能。    
 
@@ -846,25 +1448,142 @@ public class OuterClass {
 }
 ```
 
-###### Unsafe类
+### Unsafe类
 
 unsafe类是java提供的可以直接操作内存的一个类，一般不建议在项目里使用，Netty等实现NIO的库会调用unsafe操作堆外内存，保证一些频繁从堆内拷贝到堆外的数据能更高效的进行操作，堆外内存不由jvm管理，由操作系统管理，需要手动释放内存。
 
 unsafe提供cas功能，AtomicInteger等原子类也是调用对应的方法，只有CAS比较成功并赋值之后才会跳出循环。从而保证了多线程操作时的成功->cas就是自旋等待最终成功的线程安全解决方式。
 
-###### Java只有值传递
+### Java只有值传递
 
 原因可能是为了安全性，对于方法调用者来说，方法实现是未知的，使用值传递可以保证一部分的数据是无法被修改的。为了简单易用，避免引用传递产生的语义不理解，java实现只有值传递。原始参数通过值传递给方法。这意味着对参数值的任何更改都只存在于方法的范围内。当方法返回时，参数将消失，对它们的任何更改都将丢失。引用数据类型参数(如对象)也按值传递给方法。这意味着，当方法返回时，传入的引用仍然引用与以前相同的对象。但是，如果对象字段具有适当的访问级别，则可以在方法中更改这些字段的值。Java中的对象传递，如果是修改引用，是不会对原来的对象有任何影响的，但是如果直接修改共享对象的属性的值，是会对原来的对象有影响的。
 
-###### Java异常体系
+### Java异常体系
 
 ![6479D7BB01736CCC61B8270D41F00B17.png](.\pic\6479D7BB01736CCC61B8270D41F00B17.png)
 
-#### 集合类
+#### 什么是Throwable
 
-##### Collection
+Throwable是java中最顶级的异常类，继承Object，实现了序列化接口，有两个重要的子类：Exception和 Error，二者都是 Java 异常处理的重要子类，各自都包含大量子类。
 
-###### Arraylist
+#### Error和Exception的区别和联系
+
+error表示系统级的错误，是java运行环境内部错误或者硬件问题，不能指望程序来处理这样的问题，除了退出运行外别无选择，它是Java虚拟机抛出的。如OutOfMemoryError、StackOverflowError这两种常见的错误都是ERROR。  
+
+exception 表示程序需要捕捉、需要处理的异常，是由与程序设计的不完善而出现的问题，程序必须处理的问题。分为RuntimeException和其他异常  
+
+#### 请列举几个常用的RuntimeException。
+
+这个题目，其实面试官考的还挺多的，主要是考察面试者实战经验是否丰富，所以常见的RuntimeException要能回答的尽量多回答一些。
+
+AnnotationTypeMismatchException, ArithmeticException, ArrayStoreException, BufferOverflowException, BufferUnderflowException, CannotRedoException, CannotUndoException, ClassCastException, CMMException, ConcurrentModificationException, DataBindingException, DOMException, EmptyStackException, EnumConstantNotPresentException, EventException, FileSystemAlreadyExistsException, FileSystemNotFoundException, IllegalArgumentException, IllegalMonitorStateException, IllegalPathStateException, IllegalStateException, IllformedLocaleException, ImagingOpException, IncompleteAnnotationException, IndexOutOfBoundsException, JMRuntimeException, LSException, MalformedParameterizedTypeException, MirroredTypesException, MissingResourceException, NegativeArraySizeException, NoSuchElementException, NoSuchMechanismException, NullPointerException, ProfileDataException, ProviderException, ProviderNotFoundException, RasterFormatException, RejectedExecutionException, SecurityException, SystemException, TypeConstraintException, TypeNotPresentException, UndeclaredThrowableException, UnknownEntityException, UnmodifiableSetException, UnsupportedOperationException, WebServiceException, WrongMethodTypeException
+
+### 为什么说枚举是实现单例最好的方式？
+
+1. 枚举实现的单例写法简单
+
+2. 枚举实现的单例天然是线程安全的
+
+3. 枚举实现的单例可避免被反序列化破坏
+
+#### 枚举单例写法简单
+
+如果你看过《[单例模式的多种写法](https://www.yuque.com/hollis666/xx5hr2/ggh2h0)》中的实现单例的所有方式的代码，那就会发现，各种方式实现单例的代码都比较复杂。主要原因是在考虑线程安全问题。
+
+我们简单对比下“双重校验锁”方式和枚举方式实现单例的代码。
+
+```java
+public class Singleton {  
+    private volatile static Singleton singleton;  
+    private Singleton (){}  
+    public static Singleton getSingleton() {  
+    if (singleton == null) {  
+        synchronized (Singleton.class) {  
+        if (singleton == null) {  
+            singleton = new Singleton();  
+        }  
+        }  
+    }  
+    return singleton;  
+    }  
+}
+```
+
+枚举实现单例：
+
+```java
+public enum Singleton {  
+    INSTANCE;  
+    public void whateverMethod() {  
+    }  
+}
+```
+
+相比之下，你就会发现，枚举实现单例的代码会精简很多。
+
+上面的双重锁校验的代码之所以很臃肿，是因为大部分代码都是在保证线程安全。为了在保证线程安全和锁粒度之间做权衡，代码难免会写的复杂些。但是，这段代码还是有问题的，因为他无法解决反序列化会破坏单例的问题。
+
+#### 枚举可解决线程安全问题
+
+其实，并不是使用枚举就不需要保证线程安全，只不过线程安全的保证不需要我们关心而已。也就是说，其实在“底层”还是做了线程安全方面的保证的。那么，“底层”到底指的是什么？
+
+这就要说到关于枚举的实现了：
+
+定义枚举时使用enum和class一样，是Java中的一个关键字。就像class对应用一个Class类一样，enum也对应有一个Enum类。
+
+通过将定义好的枚举反编译，我们就能发现，其实枚举在经过javac的编译之后，会被转换成形如public final class T extends Enum的定义。而且，枚举中的各个枚举项同时通过static来定义的。如：
+
+```java
+public enum T {
+    SPRING,SUMMER,AUTUMN,WINTER;
+}
+```
+
+反编译后代码为：
+
+```java
+public final class T extends Enum
+{
+    //省略部分内容
+    public static final T SPRING;
+    public static final T SUMMER;
+    public static final T AUTUMN;
+    public static final T WINTER;
+    private static final T ENUM$VALUES[];
+    static
+    {
+        SPRING = new T("SPRING", 0);
+        SUMMER = new T("SUMMER", 1);
+        AUTUMN = new T("AUTUMN", 2);
+        WINTER = new T("WINTER", 3);
+        ENUM$VALUES = (new T[] {
+            SPRING, SUMMER, AUTUMN, WINTER
+        });
+    }
+}
+```
+
+了解JVM的类加载机制的朋友应该对这部分比较清楚。static类型的属性会在类被加载过程中被初始化，当一个Java类第一次被真正使用到的时候静态资源被初始化、Java类的加载和初始化过程都是线程安全的（因为虚拟机在加载枚举的类的时候，会使用ClassLoader的loadClass方法，而这个方法使用同步代码块保证了线程安全）。所以，创建一个enum类型是线程安全的。
+
+也就是说，我们定义的一个枚举，在第一次被真正用到的时候，会被虚拟机加载并初始化，而这个初始化过程是线程安全的。而我们知道，解决单例的并发问题，主要解决的就是初始化过程中的线程安全问题。
+
+所以，由于枚举的以上特性，枚举实现的单例是天生线程安全的。
+
+#### 枚举可解决反序列化会破坏单例的问题
+
+前面我们提到过，就是使用双重校验锁实现的单例其实是存在一定问题的，就是这种单例有可能被序列化所破坏，那么，对于序列化这件事情，为什么枚举又有先天的优势了呢？答案可以在[Java Object Serialization Specification](https://docs.oracle.com/javase/7/docs/platform/serialization/spec/serial-arch.html#6469) 中找到答案。其中专门对枚举的序列化做了如下规定：
+
+在序列化的时候Java仅仅是将枚举对象的name属性输出到结果中，反序列化的时候则是通过java.lang.Enum的valueOf方法来根据名字查找枚举对象。同时，编译器是不允许任何对这种序列化机制的定制的，因此禁用了writeObject、readObject、readObjectNoData、writeReplace和readResolve等方法。
+
+普通的Java类的反序列化过程中，会通过反射调用类的默认构造函数来初始化对象。所以，即使单例中构造函数是私有的，也会被反射给破坏掉。由于反序列化后的对象是重新new出来的，所以这就破坏了单例。
+
+但是，枚举的反序列化并不是通过反射实现的。所以，也就不会发生由于反序列化导致的单例破坏问题。
+
+## 集合类
+
+### Collection
+
+#### Arraylist
 
 ArrayList继承了list接口、randomaccess接口（快速随机访问，通过下标访问）、serialize接口（可序列化）、cloneable接口（可拷贝），底层使用了数组对象，线程不安全。
 
@@ -984,6 +1703,98 @@ hashmap在jdk1.8之前是数组+链表的实现方式，jdk1.8之后是数组+�
 扩容逻辑：
 
 插入元素时判断条件：如果插入数组索引处没有元素，直接插入；如果有元素，判断是否是链表，链表的条件下，从链表内开始从头部遍历检查元素，是否hash值相同，是否key相同，相同的才会覆盖，全部不相同的在尾部插入元素；红黑树的条件下，调用红黑树的插入方法。调用插入之前，判断链表长度是否大于等于8，当链表长度大于等于8时，继续判断，当hashmap数组长度大于等于64时，才会转换链表为红黑树；当长度小于64时，会先将数组扩容，之后重新计算元素下标，以此避免hash碰撞。
+
+```java
+/**
+     * Implements Map.put and related methods.
+     *
+     * @param hash         key 的 hash 值
+     * @param key          key 值
+     * @param value        value 值
+     * @param onlyIfAbsent true：如果某个 key 已经存在那么就不插了；false 存在则替换，没有则新增。这里为 false
+     * @param evict        不用管了，我也不认识
+     * @return previous value, or null if none
+     */
+    final V putVal(int hash, K key, V value, boolean onlyIfAbsent,
+                   boolean evict) {
+        // tab 表示当前 hash 散列表的引用
+        Node<K, V>[] tab;
+        // 表示具体的散列表中的元素
+        Node<K, V> p;
+        // n：表示散列表数组的长度
+        // i：表示路由寻址的结果
+        int n, i;
+        // 将 table 赋值发给 tab ；如果 tab == null，说明 table 还没有被初始化。则此时是需要去创建 table 的
+        // 为什么这个时候才去创建散列表？因为可能创建了 HashMap 时候可能并没有存放数据，如果在初始化 HashMap 的时候就创建散列表，势必会造成空间的浪费
+        // 这里也就是延迟初始化的逻辑
+        if ((tab = table) == null || (n = tab.length) == 0) {
+            n = (tab = resize()).length;
+        }
+        // 如果 p == null，说明寻址到的桶的位置没有元素。那么就将 key-value 封装到 Node 中，并放到寻址到的下标为 i 的位置
+        if ((p = tab[i = (n - 1) & hash]) == null) {
+            tab[i] = newNode(hash, key, value, null);
+        }
+        // 到这里说明 该位置已经有数据了，且此时可能是链表结构，也可能是树结构
+        else {
+            // e 表示找到了一个与当前要插入的key value 一致的元素
+            Node<K, V> e;
+            // 临时的 key
+            K k;
+            // p 的值就是上一步 if 中的结果即：此时的 (p = tab[i = (n - 1) & hash]) 不等于 null
+            // p 是原来的已经在 i 位置的元素，且新插入的 key 是等于 p中的key
+            //说明找到了和当前需要插入的元素相同的元素（其实就是需要替换而已）
+            if (p.hash == hash && ((k = p.key) == key || (key != null && key.equals(k))))
+                //将 p 的值赋值给 e
+                e = p;
+                //说明已经树化，红黑树会有单独的文章介绍，本文不再赘述
+            else if (p instanceof TreeNode) {
+                e = ((TreeNode<K, V>) p).putTreeVal(this, tab, hash, key, value);
+            } else {
+                //到这里说明不是树结构，也不相等，那说明不是同一个元素，那就是链表了
+                for (int binCount = 0; ; ++binCount) {
+                    //如果 p.next == null 说明 p 是最后一个元素，说明，该元素在链表中也没有重复的，那么就需要添加到链表的尾部
+                    if ((e = p.next) == null) {
+                        //直接将 key-value 封装到 Node 中并且添加到 p的后面
+                        p.next = newNode(hash, key, value, null);
+                        // 当元素已经是 7了，再来一个就是 8 个了，那么就需要进行树化
+                        if (binCount >= TREEIFY_THRESHOLD - 1) {
+                            treeifyBin(tab, hash);
+                        }
+                        break;
+                    }
+                    //在链表中找到了某个和当前元素一样的元素，即需要做替换操作了。
+                    if (e.hash == hash && ((k = e.key) == key || (key != null && key.equals(k)))) {
+                        break;
+                    }
+                    //将e(即p.next)赋值为e，这就是为了继续遍历链表的下一个元素（没啥好说的）下面有张图帮助大家理解。
+                    p = e;
+                }
+            }
+            //如果条件成立，说明找到了需要替换的数据，
+            if (e != null) {
+                //这里不就是使用新的值赋值为旧的值嘛
+                V oldValue = e.value;
+                if (!onlyIfAbsent || oldValue == null) {
+                    e.value = value;
+                }
+                //这个方法没用，里面啥也没有
+                afterNodeAccess(e);
+                //HashMap put 方法的返回值是原来位置的元素值
+                return oldValue;
+            }
+        }
+        // 上面说过，对于散列表的 结构修改次数，那么就修改 modCount 的次数
+        ++modCount;
+        //size 即散列表中的元素的个数，添加后需要自增，如果自增后的值大于扩容的阈值，那么就触发扩容操作
+        if (++size > threshold) {
+            resize();
+        }
+        //啥也没干
+        afterNodeInsertion(evict);
+        //原来位置没有值，那么就返回 null 呗
+        return null;
+    }
+```
 
 ###### HashMap 的长度为什么是 2 的幂次方？
 
@@ -1164,559 +1975,86 @@ ensureSegment的功能是当segement数组此位置为空时，初始化一个se
 
 put方法是比较核心的业务逻辑方法，其主要思路就是：先进入循环，判断如果node数组没有初始化，就先进行初始化操作；接着判断node数组对应位置的node元素是否存在，如果不存在，就尝试cas赋值一次，成功就跳出循环；如果其他线程已经在这个位置放置元素了，就继续走下面逻辑。下面就是根据元素是链表还是红黑树分别进行操作：链表的情况下，一个一个往下判断，检查hash值、key值相同的元素，找到的话就替换对应的value值，直到找到链表尾部，如果还找不到，就新增一个尾部元素；如果是红黑树就直接调用红黑树的方法直接放元素进去。
 
-#### IO
-
-Java io流一般分为字符流和字节流，从输入角度又分为输入流和输出流。字节流包括InputStream、FileInputStream(读取文件操作)、BufferedInputStream(字节缓冲输入流，配合FileInputStream使用)、DataInputStream(读取一些基本数据类型数据)、ObjectInputStream(读取一些对象数据类型数据)。字符流包括Reader、InputStreamReader、FileReader(读取文件操作)、BufferedReader(字符缓冲输入流，配合FileReader使用)、Writer、OutputStreamWriter、FileWriter。
-
-###### 为什么要用字符流？
-
-当输入/输出内容是字符时，使用字符流更方便，默认字符流使用unicode编码，如果使用字节流直接读取中文字符，会出现乱码。utf8 :英文占 1 字节，中文占 3 字节，unicode：任何字符都占 2 个字节，gbk：英文占 1 字节，中文占 2 字节。
-
-###### 为什么会出现字节缓冲输入流/字节缓冲输出流？
-
-BufferedInputStream/BufferedOutputStream内部使用字节数组保存了一个字节的缓冲，使用输入流时，BufferedInputStream默认读取一部分输入内容到缓冲中，这样大幅减少了 IO 次数，当我们调用read方法时直接读取内存中的缓冲内容即可，比FileInputStream快一点。当使用int接收read方法时，使用BufferedInputStream性能较FileInputStream快很多，如果使用byte[]接收read方法时，BufferedInputStream性能提升就不会那么显著了。同理可以用在BufferedReader/BufferedWriter。
-
-###### 随机访问流
-
-RandomAccessFile的特点是可以设置从文件哪个字节偏移量开始写入内容。这个典型应用场景是大文件分片上传。write方法在写入对象的时候如果对应的位置已经有数据的话，会将其覆盖掉。断点续传也可以用到，上传时只需要从未上传的分片开始继续上传即可。seek(long pos)方法来设置文件指针的偏移量（距文件开头pos个字节处）。如果想要获取文件指针当前的位置的话，可以使用getFilePointer()方法。
-
-文件分片后，合并文件的代码如下：
-
-![](./pic/文件分片后合并.png)
-
-###### 适配器模式
-
-**适配器（Adapter Pattern）模式** 主要用于接口互不兼容的类的协调工作，你可以将其联想到我们日常经常使用的电源适配器。
-
-适配器模式中存在被适配的对象或者类称为 **适配者(Adaptee)** ，作用于适配者的对象或者类称为**适配器(Adapter)** 。适配器分为对象适配器和类适配器。类适配器使用继承关系来实现，对象适配器使用组合关系来实现。
-
-IO 流中的字符流和字节流的接口不同，它们之间可以协调工作就是基于适配器模式来做的，更准确点来说是对象适配器。通过适配器，我们可以将字节流对象适配成一个字符流对象，这样我们可以直接通过字节流对象来读取或者写入字符数据。
-
-`InputStreamReader` 和 `OutputStreamWriter` 就是两个适配器(Adapter)， 同时，它们两个也是字节流和字符流之间的桥梁。`InputStreamReader` 使用 `StreamDecoder` （流解码器）对字节进行解码，**实现字节流到字符流的转换，** `OutputStreamWriter` 使用`StreamEncoder`（流编码器）对字符进行编码，实现字符流到字节流的转换。
-
-###### 观察者模式
-
-NIO 中的文件目录监听服务使用到了观察者模式。
-
-NIO 中的文件目录监听服务基于 `WatchService` 接口和 `Watchable` 接口。`WatchService` 属于观察者，`Watchable` 属于被观察者。
-
-`Watchable` 接口定义了一个用于将对象注册到 `WatchService`（监控服务） 并绑定监听事件的方法 `register` 。
-
 ```java
-public interface Path
-    extends Comparable<Path>, Iterable<Path>, Watchable{
-}
-
-public interface Watchable {
-    WatchKey register(WatchService watcher,
-                      WatchEvent.Kind<?>[] events,
-                      WatchEvent.Modifier... modifiers)
-        throws IOException;
-}
-```
-
-`WatchService` 用于监听文件目录的变化，同一个 `WatchService` 对象能够监听多个文件目录。
-
-```java
-// 创建 WatchService 对象
-WatchService watchService = FileSystems.getDefault().newWatchService();
-
-// 初始化一个被监控文件夹的 Path 类:
-Path path = Paths.get("workingDirectory");
-// 将这个 path 对象注册到 WatchService（监控服务） 中去
-WatchKey watchKey = path.register(
-watchService, StandardWatchEventKinds...);
-```
-
-`Path` 类 `register` 方法的第二个参数 `events` （需要监听的事件）为可变长参数，也就是说我们可以同时监听多种事件。
-
-```java
-WatchKey register(WatchService watcher,
-                  WatchEvent.Kind<?>... events)
-    throws IOException;
-```
-
-常用的监听事件有 3 种：
-
-- `StandardWatchEventKinds.ENTRY_CREATE`：文件创建。
-- `StandardWatchEventKinds.ENTRY_DELETE` : 文件删除。
-- `StandardWatchEventKinds.ENTRY_MODIFY` : 文件修改。
-
-`register` 方法返回 `WatchKey` 对象，通过`WatchKey` 对象可以获取事件的具体信息比如文件目录下是创建、删除还是修改了文件、创建、删除或者修改的文件的具体名称是什么。
-
-```java
-WatchKey key;
-while ((key = watchService.take()) != null) {
-    for (WatchEvent<?> event : key.pollEvents()) {
-      // 可以调用 WatchEvent 对象的方法做一些事情比如输出事件的具体上下文信息
-    }
-    key.reset();
-}
-```
-
-`WatchService` 内部是通过一个 daemon thread（守护线程）采用定期轮询的方式来检测文件的变化，简化后的源码如下所示。
-
-```java
-class PollingWatchService
-    extends AbstractWatchService
-{
-    // 定义一个 daemon thread（守护线程）轮询检测文件变化
-    private final ScheduledExecutorService scheduledExecutor;
-
-    PollingWatchService() {
-        scheduledExecutor = Executors
-            .newSingleThreadScheduledExecutor(new ThreadFactory() {
-                 @Override
-                 public Thread newThread(Runnable r) {
-                     Thread t = new Thread(r);
-                     t.setDaemon(true);
-                     return t;
-                 }});
-    }
-
-  void enable(Set<? extends WatchEvent.Kind<?>> events, long period) {
-    synchronized (this) {
-      // 更新监听事件
-      this.events = events;
-
-        // 开启定期轮询
-      Runnable thunk = new Runnable() { public void run() { poll(); }};
-      this.poller = scheduledExecutor
-        .scheduleAtFixedRate(thunk, period, period, TimeUnit.SECONDS);
-    }
-  }
-}
-```
-
-###### 同步、异步、阻塞、非阻塞怎么理解？
-
-同步和异步是用来描述被调用者的。
-
-比如A调用B。同步是指，当A调用B之后，B会立即执行要做的事，A的本次调用会得到结果。异步是指，当A调用B之后，B不会保证立即执行要做的事，但是保证一定会做，B在未来某个时间执行完后会通知A。A的本次调用不会产生结果，但是B执行完后会通知A。
-
-阻塞和非阻塞是用来描述调用者的。
-
-比如A调用B。阻塞是指，当A调用B之后，会一直等待，等着B返回结果。非阻塞是指，当A调用B之后，不需要等待，可以去做其他的事情。是否同步和是否阻塞没有必然关系。
-
-存在同步阻塞、同步非阻塞、异步阻塞、异步非阻塞四种模型。
-
-##### io模型
-
-UNIX 系统下， IO 模型一共有 5 种：**同步阻塞 I/O**、**同步非阻塞 I/O**、**I/O 多路复用**、**信号驱动 I/O** 和**异步 I/O**。
-
-###### BIO (Blocking I/O)
-
-BIO 属于同步阻塞 I/O 模型 。
-
-同步阻塞 IO 模型中，应用程序主动发起recv_from调用后，会一直阻塞，直到内核把数据拷贝到用户空间。
-
-![](./pic/bio.png)
-
-在客户端连接数量不高的情况下，是没问题的。但是，当面对十万甚至百万级连接的时候，传统的 BIO 模型是无能为力的。因此，我们需要一种更高效的 I/O 处理模型来应对更高的并发量。
-
-###### 同步非阻塞 I/O
-
-![](./pic/nio.png)
-
-在同步非阻塞I/O模型中，应用程序先发起recv_from系统调用，此时系统会检查数据是否缓冲完成，如果没有，则直接返回。此后应用程序隔段时间就会发起一次recv_from系统调用，系统都会返回，直到数据已经缓冲到内核缓冲区。此时应用程序发起recv_from系统调用时，内核将开始拷贝内核缓冲区中的数据到应用程序内存中，直到数据拷贝完成，这个时候内核会返回给应用程序，应用程序开始处理数据。在拷贝期间，应用程序处于阻塞状态。可以看出，同步非阻塞I/O模型相对于阻塞模型来说，准备数据和数据拷贝到到内核缓冲区的过程都是非阻塞的，应用程序的调用都是立即返回的。直到内核开始从内核缓冲区中拷贝数据到应用程序内存中的时期，才会使应用程序处于阻塞状态。这里的同步是指内核复制数据到应用程序是同步进行的，非阻塞是指应用程序在确认数据是否缓冲完毕的时候是非阻塞进行的。
-
-但是，这种 IO 模型同样存在问题：**应用程序不断进行 I/O 系统调用轮询数据是否已经准备好的过程是十分消耗 CPU 资源的。**
-
-###### I/O 多路复用
-
-![](./pic/io多路复用.png)
-
-I/O 多路复用模型中，线程首先发起 select 调用，询问内核查询的多个套接字是否准备好数据了，此时一直处于阻塞状态，等到某一个套接字数据准备好了，内核才会返回结果，此时用户线程再发起recv_from调用。recv_from调用的过程（数据从内核空间 -> 用户空间）还是阻塞的。这个IO模型本质上依然是同步阻塞模型。
-
-> 目前支持 IO 多路复用的系统调用，有 select，epoll 等等。select 系统调用，目前几乎在所有的操作系统上都有支持。
-> 
-> - **select 调用**：内核提供的系统调用，它支持一次查询多个系统调用的可用状态。几乎所有的操作系统都支持。缺点是单个进程可以监控的套接字数量有上限，在Linux上一般是1024。
-> - **epoll 调用**：linux 2.6 内核，属于 select 调用的增强版本，优化了 IO 的执行效率。
-
-IO 多路复用模型，相对于阻塞I/O模型，似乎不显出什么优势，但是当select调用查询多个套接字时，将比单个调用的BIO方便不少，系统性能也会得到提升，cpu资源消耗相对更小。
-
-Java 中的 NIO ，有一个非常重要的**选择器 ( Selector )** 的概念，也可以被称为 **多路复用器**。通过它，只需要一个线程便可以管理多个客户端连接。当客户端数据到了之后，才会为其服务。
-
-![](./pic/javanio.png)
-
-###### 信号驱动 I/O
-
-![](./pic/sigio.jpg)
-
-这个模型似乎未出现在java中，还是一个系统模型。这个模型主要是应用程序先发起一个sigaction系统调用，产生一个信号处理程序，此时内核会立即返回。直到内核中数据准备好，数据拷贝到内核缓冲区中，此后内核会按照约定递交sigio信号，应用程序接收到后会按照自己产生的信号处理程序继续发起recv_from系统调用，此时内核将内核缓冲区的数据复制到应用程序内存中，完成后返回。可以看出这个模型在数据准备阶段不需要阻塞，也不会出现频繁系统调用产生的系统资源浪费，全部流程基于约定的信号和数据处理程序，只是最后的内核缓冲区数据拷贝到应用程序内存中这个时期应用程序还是处于阻塞状态。
-
-###### 异步 I/O（AIO）
-
-![](./pic/aio.png)
-
-异步I/O模型是应用程序发起aio_read系统调用，内核检查数据未准备好，则直接返回。直到内核接收到数据且在内核缓冲区准备好数据，且内核按照约定将内核缓冲区的数据拷贝到应用程序内存中指定位置，此后内核会按照约定通知应用程序。此时应用程序可以开始处理数据。在此期间，应用程序未处于阻塞状态。这是真正的异步非阻塞IO。
-
-Java 7 中引入了 NIO 的改进版 NIO 2,它是异步 IO 模型。目前来说 AIO 的应用还不是很广泛。Netty 之前也尝试使用过 AIO，不过又放弃了。这是因为，Netty 使用了 AIO 之后，在 Linux 系统上的性能并没有多少提升。
-
-##### 零拷贝
-
-要想理解零拷贝，首先要了解操作系统的IO流程，因为有内核态和用户态的区别，为了保证安全性和缓存，普通的读写流程如下： 
-（对于Java程序，还会多了一个堆外内存和堆内存之间的copy）
-
-![](./pic/零拷贝-1.png)
-
-整体的流程如下所示： 
-
-1. 用户read发起系统调用，由用户态进入内核态，通过DMA技术将磁盘中的数据copy到内核缓冲区中
-
-2. 当DMA完成工作后，会发起一个中断通知CPU数据拷贝完成，然后CPU再将内核态中的数据copy到用户态中
-
-3. 内核唤醒对应线程，同时将用户态的数据返回给该线程空间
-
-4. 用户态线程进行业务处理 
-
-5. 当服务器对请求进行响应的时候，会发起系统调用，由内核将用户态的数据copy到内核态中
-
-6. 复制完毕后，再有网络适配器通过DMA技术将内核态缓冲区中的数据copy到网卡中，完成后，内核态会返回到用户态
-
-7. 最后由网卡将数据发送出去
-
-8. 最后由网卡将数据发送出去
-
-**在这个过程中，如果不考虑用户态的内存拷贝和物理设备到驱动的数据拷贝，我们会发现，这其中会涉及4次数据拷贝。同时也会涉及到4次进程上下文的切换。零拷贝技术的本质，就是通过各种方式，在特殊情况下，减少数据拷贝的次数/减少CPU参与数据拷贝的次数。**
-常见的零拷贝方式有mmap，sendfile，DMA，directI/O等。
-
-###### DMA
-
-正常的IO流程中，不管是物理设备之间的数据拷贝，如磁盘到内存，还是内存之间的数据拷贝，如用户态到内核态，都是需要CPU参与的，如下所示
-
-![](./pic/零拷贝-2.png)
-
-如果是比较大的文件，这样无意义的copy显然会极大的浪费CPU的效率，所以就诞生了DMA：
-
-![](./pic/零拷贝-3.png)
-
-###### mmap
-
-上文我们说到，正常的read+write，都会经历至少四次数据拷贝的，其中就包括内核态到用户态的拷贝，它的作用是为了安全和缓存。如果我们能保证安全性，是否就让用户态和内核态共享一个缓冲区呢？这就是mmap的作用。  
-
-mmap，全称是memory map，翻译过来就是内存映射，顾名思义，就是将内核态和用户态的内存映射到一起，避免来回拷贝，实现这样的映射关系后，进程就可以采用指针的方式读写操作这一段内存，而系统会自动回写脏页面到对应的文件磁盘上，即完成了对文件的操作而不必再调用 read、write 等系统调用函数。相反，内核空间对这段区域的修改也直接反映用户空间，从而可以实现不同进程间的文件共享。
-
-一般来讲，mmap会代替read方法，模型如下图所示：
-
-![](./pic/零拷贝-4.png)
-
-如果这个时候系统进行IO的话，采用mmap + write的方式，内存拷贝的次数会变为3次，上下文切换则依旧是4次。需要注意的是，mmap采用基于缺页异常的懒加载模式。通过 mmap 申请 1000G 内存可能仅仅占用了 100MB 的虚拟内存空间，甚至没有分配实际的物理内存空间，只有当真正访问的时候，才会通过缺页中断的方式分配内存。但是mmap不是银弹，有如下原因：  
-
-1. mmap 使用时必须实现指定好内存映射的大小，因此 mmap 并不适合变长文件；  
-
-2. 因为mmap在文件更新后会通过OS自动将脏页回写到disk中，所以在随机写很多的情况下，mmap 方式在效率上不一定会比带缓冲区的一般写快；  
-
-3. 因为mmap必须要在内存中找到一块连续的地址块，如果在 32-bits 的操作系统上，虚拟内存总大小也就 2GB左右（32位系统的地址空间最大为4G，除去1G系统，用户能使用的内存最多为3G左右（windows内核较大，一般用户只剩下2G可用）。），此时就很难对 4GB 大小的文件完全进行 mmap，所以对于超大文件来讲，mmap并不适合。
-
-###### sendfile
-
-如果只是传输数据，并不对数据作任何处理，譬如将服务器存储的静态文件，如html，js发送到客户端用于浏览器渲染，在这种场景下，如果依然进行这么多数据拷贝和上下文切换，简直就是丧心病狂有木有！所以我们就可以通过sendfile的方式，只做文件传输，而不通过用户态进行干预：
-
-![](./pic/零拷贝-5.png)
-
-此时我们发现，数据拷贝变成了3次，上下文切换减少到了2次。 
-虽然这个时候已经优化了不少，但是我们还有一个问题，为什么内核要拷贝两次（page cache -> socket cache），能不能省略这个步骤？当然可以
-
-###### sendfile + DMA Scatter/Gather
-
-DMA gather是LInux2.4新引入的功能，它可以读page cache中的数据描述信息（内存地址和偏移量）记录到socket cache中，由 DMA 根据这些将数据从读缓冲区拷贝到网卡，相比之前版本减少了一次CPU拷贝的过程，如下图所示：
-
-![](./pic/零拷贝-6.png)
-
-###### direct I/O
-
-之前的mmap可以让用户态和内核态共用一个内存空间来减少拷贝，其实还有一个方式，就是硬件数据不经过内核态的空间，直接到用户态的内存中，这种方式就是Direct I/O。换句话说，Direct I/O不会经过内核态，而是用户态和设备的直接交互，用户态的写入就是直接写入到磁盘，不会再经过操作系统刷盘处理。 
-这样确实拷贝次数减少，读取速度会变快，但是因为操作系统不再负责缓存之类的管理，这就必须交由应用程序自己去做，譬如MySql就是自己通过Direct I/O完成的，同时MySql也有一套自己的缓存系统。
-同时，虽然direct I/O可以直接将文件写入磁盘中，但是文件相关的元信息还是要通过fsync缓存到内核空间。
-
-##### Java NIO
-
-java nio在底层系统调用之上，封装了channel、buffer、selector等组件，保证了高并发下的性能，在较少连接时相较于bio没有明显优势。java的网络编程框架netty使用了java的nio，并增加了零拷贝技术减少了系统资源的消耗（拷贝时间、多余拷贝次数、cpu资源）。
-
-#### 并发编程
-
-###### CopyOnWriteArrayList
-
-CopyOnWriteArrayList使用了COW(Copy on Write)的策略，保证读多写少的场景的性能。COW是指多个读线程读取数据时，是读取原数组的数据，不会加锁，读读并行。写线程修改数据(add、remove、update)时，对arraylist加锁，写写互斥。写数据时，调用系统方法将原数组拷贝一份，在拷贝数组上操作完毕后才将数组引用指向拷贝数组。
-
-优点：面对读多写少的场景，读读并行，性能较高，写线程不会影响读的性能。
-
-缺点：
-
-1. 每个写线程都需要拷贝数组，当数组占用内存较大时，写操作对内存的消耗也较大。
-
-2. 面对写多的场景会出现性能问题，每个写线程都因为需要加锁而阻塞，且写逻辑里会复制数组，再进行新增或替换操作，写操作的开销较大。
-
-3. 可能出现一段时间的数据不一致问题，写线程在将拷贝数组赋值给数组引用前，读线程读到的数据都是旧数据。如果读线程先读取了数组引用，写线程此时才将数组引用改成拷贝数组，这个读线程依然只能读到旧数据。
-
-add方法
-
-核心逻辑就是先对arraylist加锁，调用系统方法复制数组到拷贝数组中，再在数组末尾添加元素，最后将拷贝数组赋值给数组引用，最后finally中释放锁。
-
-由于CopyOnWriteArrayList的数组在每次add时直接从原数组复制一份拷贝数组，同时增加一格数组长度，所以内部数组每个位置都有元素，不像arraylist会存在空闲空间。
-
-remove方法
-
-核心逻辑就是先对arraylist加锁，调用系统方法复制数组到拷贝数组中，如果删除的是数组最后一个元素，那复制操作直接复制原数组元素到最后一个元素之前即可；如果不是最后一个元素，那复制原数组元素从0到指定下标之前的元素+指定下标之后的元素到数组末尾。最后将拷贝数组赋值给数组引用，最后finally中释放锁。
-
-get方法
-
-读取原数组引用，如果是根据下标找元素，直接返回指定下标的元素。
-
-contains方法
-
-for循环整个数组，对每个元素使用equals方法判断是否相等，找到则返回true。
-
-###### ConcurrentLinkedQueue
-
-Java 提供的线程安全的 `Queue` 可以分为**阻塞队列**和**非阻塞队列**，其中阻塞队列的典型例子是 `BlockingQueue`，非阻塞队列的典型例子是 `ConcurrentLinkedQueue`，在实际应用中要根据实际需要选用阻塞队列或者非阻塞队列。 **阻塞队列可以通过加锁来实现，非阻塞队列可以通过 CAS 操作实现。**
-
-从名字可以看出，`ConcurrentLinkedQueue`这个队列使用链表作为其数据结构．`ConcurrentLinkedQueue` 应该算是在高并发环境中性能最好的队列了。它之所有能有很好的性能，是因为其内部复杂的实现。
-
-`ConcurrentLinkedQueue` 内部代码我们就不分析了，大家知道 `ConcurrentLinkedQueue` 主要使用 CAS 非阻塞算法来实现线程安全就好了。
-
-`ConcurrentLinkedQueue` 适合在对性能要求相对较高，同时对队列的读写存在多个线程同时进行的场景，即如果对队列加锁的成本较高则适合使用无锁的 `ConcurrentLinkedQueue` 来替代。
-
-###### ConcurrentSkipListMap
-
-为了引出 `ConcurrentSkipListMap`，先带着大家简单理解一下跳表。
-
-对于一个单链表，即使链表是有序的，如果我们想要在其中查找某个数据，也只能从头到尾遍历链表，这样效率自然就会很低，跳表就不一样了。跳表是一种可以用来快速查找的数据结构，有点类似于平衡树。它们都可以对元素进行快速的查找。但一个重要的区别是：对平衡树的插入和删除往往很可能导致平衡树进行一次全局的调整。而对跳表的插入和删除只需要对整个数据结构的局部进行操作即可。这样带来的好处是：在高并发的情况下，你会需要一个全局锁来保证整个平衡树的线程安全。而对于跳表，你只需要部分锁即可。这样，在高并发环境下，你就可以拥有更好的性能。而就查询的性能而言，跳表的时间复杂度也是 **O(logn)** 所以在并发数据结构中，JDK 使用跳表来实现一个 Map。
-
-跳表的本质是同时维护了多个链表，并且链表是分层的
-
-![](./pic/skiplist1.jpg)
-
-最低层的链表维护了跳表内所有的元素，每上面一层链表都是下面一层的子集。
-
-跳表内的所有链表的元素都是排序的。查找时，可以从顶级链表开始找。一旦发现被查找的元素大于当前链表中的取值，就会转入下一层链表继续找。这也就是说在查找过程中，搜索是跳跃式的。如上图所示，在跳表中查找元素 18。
-
-![](./pic/skiplist2.jpg)
-
-查找 18 的时候原来需要遍历 18 次，现在只需要 7 次即可。针对链表长度比较大的时候，构建索引查找效率的提升就会非常明显。
-
-从上面很容易看出，**跳表是一种利用空间换时间的算法。**
-
-使用跳表实现 `Map` 和使用哈希算法实现 `Map` 的另外一个不同之处是：哈希并不会保存元素的顺序，而跳表内所有的元素都是排序的。因此在对跳表进行遍历时，你会得到一个有序的结果。所以，如果你的应用需要有序性，那么跳表就是你不二的选择。JDK 中实现这一数据结构的类是 `ConcurrentSkipListMap`。
-
-###### 什么是 BlockingQueue？
-
-`BlockingQueue` （阻塞队列）是一个接口，继承自 `Queue`。`BlockingQueue`阻塞的原因是其支持当队列没有元素时一直阻塞，直到有元素；还支持如果队列已满，一直等到队列可以放入新元素时再放入。BlockingQueue常用于生产者-消费者模型中，生产者线程会向队列中添加数据，而消费者线程会从队列中取出数据进行处理。
-
-###### BlockingQueue 的实现类有哪些？
-
-- `ArrayBlockingQueue`：使用数组实现的有界阻塞队列。在创建时需要指定容量大小，并支持公平和非公平两种方式的锁访问机制。
-- `LinkedBlockingQueue`：使用单向链表实现的可选有界阻塞队列。在创建时可以指定容量大小，如果不指定则默认为`Integer.MAX_VALUE`。和`ArrayBlockingQueue`类似， 它也支持公平和非公平的锁访问机制。
-- `PriorityBlockingQueue`：支持优先级排序的无界阻塞队列。元素必须实现`Comparable`接口或者在构造函数中传入`Comparator`对象，并且不能插入 null 元素。
-- `SynchronousQueue`：同步队列，是一种不存储元素的阻塞队列。每个插入操作都必须等待对应的删除操作，反之删除操作也必须等待插入操作。因此，`SynchronousQueue`通常用于线程之间的直接传递数据。
-- `DelayQueue`：延迟队列，其中的元素只有到了其指定的延迟时间，才能够从队列中出队。
-
-###### ArrayBlockingQueue
-
-`ArrayBlockingQueue` 一旦创建，容量不能改变。其并发控制采用可重入锁 `ReentrantLock` ，不管是插入操作还是读取操作，都需要获取到锁才能进行操作。当队列容量满时，尝试将元素放入队列的生产者线程将导致操作阻塞;尝试从一个空队列中取一个元素的消费者线程也会同样阻塞。
-
-`ArrayBlockingQueue` 默认情况下不能保证线程访问队列的公平性，所谓公平性是指严格按照线程等待的绝对时间顺序，即最先等待的线程能够最先访问到 `ArrayBlockingQueue`。而非公平性则是指访问 `ArrayBlockingQueue` 的顺序不是遵守严格的时间顺序，有可能存在，当 `ArrayBlockingQueue` 可以被访问时，长时间阻塞的线程依然无法访问到 `ArrayBlockingQueue`。如果保证公平性，通常会降低吞吐量。如果需要获得公平性的 `ArrayBlockingQueue`，可采用如下代码：
-
-```java
-private static ArrayBlockingQueue<Integer> blockingQueue = new ArrayBlockingQueue<Integer>(10,true);
-```
-
-###### LinkedBlockingQueue
-
-`LinkedBlockingQueue` 底层基于**单向链表**实现的阻塞队列，可以当做无界队列也可以当做有界队列来使用，同样满足 FIFO 的特性，与 `ArrayBlockingQueue` 相比起来具有更高的吞吐量，为了防止 `LinkedBlockingQueue` 容量迅速增加，损耗大量内存。通常在创建 `LinkedBlockingQueue` 对象时，会指定其大小，如果未指定，容量等于 `Integer.MAX_VALUE` 。
-
-###### ArrayBlockingQueue 和 LinkedBlockingQueue 有什么区别？
-
-`ArrayBlockingQueue` 和 `LinkedBlockingQueue` 是 Java 并发包中常用的两种阻塞队列实现，它们都是线程安全的。不过，不过它们之间也存在下面这些区别：
-
-- 底层实现：`ArrayBlockingQueue` 基于数组实现，而 `LinkedBlockingQueue` 基于链表实现。
-- 是否有界：`ArrayBlockingQueue` 是有界队列，必须在创建时指定容量大小。`LinkedBlockingQueue` 创建时可以不指定容量大小，默认是`Integer.MAX_VALUE`，也就是无界的。但也可以指定队列大小，从而成为有界的。
-- 锁是否分离： `ArrayBlockingQueue`中的锁是没有分离的，即生产和消费用的是同一个锁；`LinkedBlockingQueue`中的锁是分离的，即生产用的是`putLock`，消费是`takeLock`，这样可以防止生产者和消费者线程之间的锁争夺。
-- 内存占用：`ArrayBlockingQueue` 需要提前分配数组内存，而 `LinkedBlockingQueue` 则是动态分配链表节点内存。这意味着，`ArrayBlockingQueue` 在创建时就会占用一定的内存空间，且往往申请的内存比实际所用的内存更大，而`LinkedBlockingQueue` 则是根据元素的增加而逐渐占用内存空间。
-
-###### PriorityBlockingQueue
-
-`PriorityBlockingQueue` 是一个支持优先级的无界阻塞队列。默认情况下元素采用自然顺序进行排序，也可以通过自定义类实现 `compareTo()` 方法来指定元素排序规则，或者初始化时通过构造器参数 `Comparator` 来指定排序规则。
-
-`PriorityBlockingQueue` 并发控制采用的是可重入锁 `ReentrantLock`，队列为无界队列（`ArrayBlockingQueue` 是有界队列，`LinkedBlockingQueue` 也可以通过在构造函数中传入 `capacity` 指定队列最大的容量，但是 `PriorityBlockingQueue` 只能指定初始的队列大小，后面插入元素的时候，**如果空间不够的话会自动扩容**）。
-
-简单地说，它就是 `PriorityQueue` 的线程安全版本。不可以插入 null 值，同时，插入队列的对象必须是可比较大小的（comparable），否则报 `ClassCastException` 异常。它的插入操作 put 方法不会 block，因为它是无界队列（take 方法在队列为空的时候会阻塞）。
-
-###### DelayQueue
-
-DelayQueue底层使用了PriorityQueue优先级队列作为任务的存放处，使用ReentantLock可重入锁锁住Queue保证多个线程竞争时的线程安全性。PriorityQueue使用了二叉小顶堆保证任务按照优先级进行排序。为了保证异步任务的定时执行，使用了Condition的await和signal方法完成多线程之间的等待与唤醒。
-
-应用场景一般是定时任务调度和缓存过期时间。定时任务调度的功能一般需要将任务加入到DelayQueue中，设置好剩余时间保证任务按顺序执行。缓存过期删除功能一般需要将缓存封装成一个task，设置好过期时间后， 由消费者定期删除指定缓存。
-
-DelayQueue的delay接口指定了获取剩余时间的方法getDelay方法需要生产者自己实现，并且需要重写compareTo方法用于比较各个任务谁的优先级较高。
-
-```java
-public class DelayedTask implements Delayed {
-  public long excuteTime;
-  private Runnable task;
-
-  public DelayedTask(long delay, Runnable task) {
-    this.excuteTime = System.currentTimeMillis() + delay;
-    this.task = task;
-  }
-
-  @Override
-  public long getDelay(TimeUnit unit) {
-    return unit.convert(excuteTime - System.currentTimeMillis(), TimeUnit.MILLISECONDS);
-  }
-
-  @Override
-  public int compareTo(Delayed o) {
-    return Long.compare(excuteTime, ((DelayedTask) o).excuteTime);
-  }
-
-  public void execute() {
-   task.run();
-  }
-}
-
-
-public class TestDelayQueue {
-  public static void main(String[] args) {
-    DelayQueue<DelayedTask> delayQueue = new DelayQueue();
-    delayQueue.add(
-        new DelayedTask(
-            2000,
-            () -> {
-              System.out.println("bb");
-            }));
-    delayQueue.add(
-        new DelayedTask(
-            1000,
-            () -> {
-              System.out.println("aa");
-            }));
-    delayQueue.add(
-        new DelayedTask(
-            3000,
-            () -> {
-              System.out.println("cc");
-            }));
-
-    for (int i = 0; i < delayQueue.size(); i++) {
-      System.out.println("start DelayedTask:" + i);
-      new Thread(
-              new Runnable() {
-                @Override
-                public void run() {
-                  if (!delayQueue.isEmpty()) {
-                    DelayedTask take = null;
-                    try {
-                      take = delayQueue.take();
-                    } catch (InterruptedException e) {
-                      throw new RuntimeException(e);
+public V put(K key, V value) {
+    if (value == null)
+        throw new NullPointerException();
+
+    // 对 key 的 hashCode 进行扰动
+    int hash = spread(key.hashCode());
+    int binCount = 0;
+
+    // 循环操作
+    for (Node<K,V>[] tab = table;;) {
+        Node<K,V> f; int n, i, fh;
+
+        // 如果 table 为 null 或长度为 0，则进行初始化
+        if (tab == null || (n = tab.length) == 0)
+            tab = initTable();
+
+            // 如果哈希槽为空，则通过 CAS 操作尝试插入新节点
+        else if ((f = tabAt(tab, i = (n - 1) & hash)) == null) {
+            if (casTabAt(tab, i, null,
+                         new Node<K,V>(hash, key, value, null)))
+                break;
+        }
+
+            // 如果哈希槽处已经有节点，且 hash 值为 MOVED，则说明正在进行扩容，需要帮助迁移数据
+        else if ((fh = f.hash) == MOVED)
+            tab = helpTransfer(tab, f);
+
+            // 如果哈希槽处已经有节点，且 hash 值不为 MOVED，则进行链表/红黑树的节点遍历或插入操作
+        else {
+            V oldVal = null;
+
+            // 加锁，确保只有一个线程操作该节点的链表/红黑树
+            synchronized (f) {
+                if (tabAt(tab, i) == f) {
+                    if (fh >= 0) {
+                        // 遍历链表，找到相同 key 的节点，更新值或插入新节点
+                        binCount = 1;
+                        for (Node<K,V> e = f;; ++binCount) {
+                            K ek;
+                            if (e.hash == hash &&
+                                ((ek = e.key) == key ||
+                                 (ek != null && key.equals(ek)))) {
+                                oldVal = e.val;
+                                if (!onlyIfAbsent)
+                                    e.val = value;
+                                break;
+                            }
+                            Node<K,V> pred = e;
+                            if ((e = e.next) == null) {
+                                // 将新节点插入到链表末尾
+                                if (casNext(pred, new Node<K,V>(hash, key,
+                                                                value, null))) {
+                                    break;
+                                }
+                            }
+                        }
                     }
-                    if (take != null) {
-                      take.execute();
+                        // 遍历红黑树，找到相同 key 的节点，更新值或插入新节点
+                    else if (f instanceof TreeBin) {
+                        Node<K,V> p;
+                        binCount = 2;
+                        if ((p = ((TreeBin<K,V>)f).putTreeVal(hash, key,
+                                                              value)) != null) {
+                            oldVal = p.val;
+                            if (!onlyIfAbsent)
+                                p.val = value;
+                        }
                     }
-                  }
                 }
-              })
-          .start();
+            }
+            // 如果插入或更新成功，则进行可能的红黑树化操作
+            if (binCount != 0) {
+                if (binCount >= TREEIFY_THRESHOLD)
+                    treeifyBin(tab, i);
+                // 如果替换旧值成功，则返回旧值
+                if (oldVal != null)
+                    return oldVal;
+                break;
+            }
+        }
     }
-  }
-}
 ```
-
-输出结果：
-
-```java
-start DelayedTask:0
-start DelayedTask:1
-start DelayedTask:2
-aa
-bb
-cc
-```
-
-###### MESI
-
-volatile修饰的变量会在线程的工作内存修改了之后，通过总线嗅探机制同步给主内存和其他线程的工作内存，这是计算机实现的机制。同时，volatile修饰的变量在修改的地方，前后代码行会加上内存屏障，防止指令重排序。其实底层是jvm使用了汇编的lock指令加在变量赋值前后。
-
-如果一个线程内的几条指令互不影响，可以使用指令重排序
-
-as-if-serial原则：
-
-happens-before原则
-
-###### DCL双重检查锁单例对象出现半初始化现象
-
-###### ThreadLocal类
-
-ThreadLocal是采用哈希表的方式来为每个线程都提供一个变量的副本
-
-ThreadLocal保证各个线程间数据安全，每个线程的数据不会被另外线程访问和破坏
-
-###### ReadWriteLock场景
-
-ReadWriteLock即为读写锁，他要求写与写之间互斥，读与写之间互斥，    读与读之间可以并发执行。在读多写少的情况下可以提高效率
-
-###### Synchronized 的锁升级
-
-#### JVM
-
-###### 哪种情况会导致持久区jvm堆内存溢出？
-
-Java中堆内存分为两部分，分别是permantspace和heap space。permantspace（持久区）主要存放的是Java类定义信息，与垃圾收集器要收集的Java对象关系不大。持久代溢出通常由于持久代设置过小，动态加载了大量Java类，因此C选项正确。
-
-heap space分为年轻代和年老代， 年老代常见的内存溢出原因有循环上万次的字符串处理、在一段代码内申请上百M甚至上G的内存和创建成千上万的对象。
-
-#### 相关阅读
-
-- [基本功 | Java 即时编译器原理解析及实践](https://tech.meituan.com/2020/10/22/java-jit-practice-in-meituan.html)
-
-- [彻底弄懂 Java 的移位操作符](https://juejin.cn/post/6844904025880526861)
-
-- [面向过程：面向过程性能比面向对象高？？](https://github.com/Snailclimb/JavaGuide/issues/431)
-
-- [Java hashCode() 和 equals()的若干问题解答](https://www.cnblogs.com/skywang12345/p/3324958.html)
-
-- [如何理解 String 类型值的不可变？ - 知乎提问](https://www.zhihu.com/question/20618891/answer/114125846)
-
-- [还在无脑用StringBuilder？来重温一下字符串拼接吧](https://juejin.cn/post/7182872058743750715)
-
-- [Java--深入理解字符串的String#intern()方法奥妙之处_吾日三省贾斯汀的博客-CSDN博客](https://blog.csdn.net/JustinQin/article/details/120606343)
-
-- [R 大（RednaxelaFX）关于常量折叠的回答](https://www.zhihu.com/question/55976094/answer/147302764)
-
-- [Java Reflection: Why is it so slow?](https://stackoverflow.com/questions/1392351/java-reflection-why-is-it-so-slow)[应用安全：JAVA 反序列化漏洞之殇](https://cryin.github.io/blog/secure-development-java-deserialization-vulnerability/)
-
-- [Java keywords with examples](https://www.codejava.net/java-core/the-java-language/java-keywords)
-
-- [this关键字总结_this这个关键字_dbjxs的博客-CSDN博客](https://blog.csdn.net/u013393958/article/details/79881037)
-
-- [剖析static关键字的四种使用场景_拉里_佩奇的博客-CSDN博客](https://blog.csdn.net/chen13579867831/article/details/78995480)
-
-- [java提高篇(八)----详解内部类 - chenssy - 博客园](https://www.cnblogs.com/chenssy/p/3388487.html)
-
-- [Java提高篇——静态代码块、构造代码块、构造函数以及Java类初始化顺序 - 萌小Q - 博客园](https://www.cnblogs.com/Qian123/p/5713440.html)
-
-- 《深入拆解 Tomcat & Jetty》
-
-- 如何完成一次 IO：https://llc687.top/126.html
-
-- 程序员应该这样理解 IO：[程序员应该这样理解IO - 简书](https://www.jianshu.com/p/fa7bdc4f3de7)
-
-- 10 分钟看懂， Java NIO 底层原理：[10分钟看懂， Java NIO 底层原理 - 疯狂创客圈 - 博客园](https://www.cnblogs.com/crazymakercircle/p/10225159.html)
-
-- IO 模型知多少 | 理论篇：[IO 模型知多少 | 理论篇 - 「圣杰」 - 博客园](https://www.cnblogs.com/sheng-jie/p/how-much-you-know-about-io-models.html)
-
-- 《UNIX 网络编程 卷 1；套接字联网 API 》6.2 节 IO 模型
-
-- Java NIO浅析：[Java NIO浅析 - 美团技术团队](https://tech.meituan.com/2016/11/04/nio.html)
-
-- 面试官：Java NIO 了解？https://mp.weixin.qq.com/s/mZobf-U8OSYQfHfYBEB6KA
-
-- Java NIO：Buffer、Channel 和 Selector：[Java NIO：Buffer、Channel 和 Selector_Javadoop](https://www.javadoop.com/post/java-nio)
-
-- 《实战 Java 高并发程序设计》
-
-- [解读 java 并发队列 BlockingQueue_Javadoop](https://javadoop.com/post/java-concurrent-queue)
-
-- https://juejin.im/post/5aeebd02518825672f19c546

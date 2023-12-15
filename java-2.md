@@ -1432,7 +1432,7 @@ JVM中，动态年龄判断的代码如下：
 
 ```cpp
 uint ageTable::compute_tenuring_threshold(size_t survivor_capacity) {
-  
+
   size_t desired_survivor_size = (size_t)((((double) survivor_capacity)*TargetSurvivorRatio)/100);
   size_t total = 0;
   uint age = 1;
@@ -1718,7 +1718,7 @@ Java 8 和 Java 11都是LTS版本的JDK，所以会有人经常问他们之间�
 
 
 
-#### 相关阅读
+## 相关阅读
 
 - [基本功 | Java 即时编译器原理解析及实践](https://tech.meituan.com/2020/10/22/java-jit-practice-in-meituan.html)
 

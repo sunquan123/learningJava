@@ -1686,9 +1686,9 @@ hashset使用contains确认某个元素是否在集合内部时使用了hashmap�
 
 `PriorityQueue` 在面试中可能更多的会出现在手撕算法的时候，典型例题包括堆排序、求第 K 大的数、带权图的遍历等，所以需要会熟练使用才行。
 
-##### Map
+### Map
 
-###### hashmap
+#### hashmap
 
 hashmap在jdk1.8之前是数组+链表的实现方式，jdk1.8之后是数组+链表或红黑树的实现方式。hashmap初始容量为16，扩容后体积为两倍，负载因子默认是0.75，大于负载因子*容量时进行扩容操作。负载因子太大，会导致数组过于密集，容易产生hash碰撞现象；负载因子太低会导致数组过于稀疏，数组利用率低。
 
@@ -1796,7 +1796,7 @@ hashmap在jdk1.8之前是数组+链表的实现方式，jdk1.8之后是数组+�
     }
 ```
 
-###### HashMap 的长度为什么是 2 的幂次方？
+#### HashMap 的长度为什么是 2 的幂次方？
 
 为了能让 HashMap 存取高效，尽量较少碰撞，也就是要尽量把数据分配均匀。我们上面也讲到了过了，Hash 值的范围值-2147483648 到 2147483647，前后加起来大概 40 亿的映射空间，只要哈希函数映射得比较均匀松散，一般应用是很难出现碰撞的。但问题是一个 40 亿长度的数组，内存是放不下的。所以这个散列值是不能直接拿来用的。用之前还要先做对数组的长度取模运算，得到的余数才能用来要存放的位置也就是对应的数组下标。这个数组下标的计算方法是“ `(n - 1) & hash`”。（n 代表数组长度）。这也就解释了 HashMap 的长度为什么是 2 的幂次方。
 
@@ -1804,7 +1804,61 @@ hashmap在jdk1.8之前是数组+链表的实现方式，jdk1.8之后是数组+�
 
 我们首先可能会想到采用%取余的操作来实现。但是，重点来了：**“取余(%)操作中如果除数是 2 的幂次则等价于与其除数减一的与(&)操作（也就是说 hash%length==hash&(length-1)的前提是 length 是 2 的 n 次方；）。”** 并且 **采用二进制位操作 &，相对于%能够提高运算效率，这就解释了 HashMap 的长度为什么是 2 的幂次方。**
 
-###### LinkedHashMap
+#### hashmap的红黑树什么时候退化成链表？
+
+hashmap有两个地方会判断并退化成链表的条件：
+
+1. remove时退化
+   
+   ```java
+   // 在 removeTreeNode的方法中
+   // 在红黑树的root节点为空 或者root的右节点、root的左节点、root左节点的左节点为空时 说明树都比较小了
+   if (root == null || (movable && (root.right == null || (rl = root.left) == null|| rl.left == null))) {
+         tab[index] = first.untreeify(map);  // too small
+       return;
+   }
+   ```
+
+2. 在扩容时 low、high 两个TreeNode 长度小于6时 会退化为链表。
+   
+   ```java
+   // 在resize里面的split方法中
+   // 在low、high 两个TreeNode 长度小于6时 会退化为链表。
+   if (loHead != null) {
+                   if (lc <= UNTREEIFY_THRESHOLD)
+                       tab[index] = loHead.untreeify(map);
+                   else {
+                       tab[index] = loHead;
+                       if (hiHead != null) // (else is already treeified)
+                           loHead.treeify(tab);
+                   }
+               }
+               if (hiHead != null) {
+                   if (hc <= UNTREEIFY_THRESHOLD)
+                       tab[index + bit] = hiHead.untreeify(map);
+                   else {
+                       tab[index + bit] = hiHead;
+                       if (loHead != null)
+                           hiHead.treeify(tab);
+                   }
+               }
+   ```
+
+#### hashmap为什么不是线程安全的？
+
+[为什么HashMap线程不安全？以及实现HashMap线程安全的解决方案_hashmap为什么是线程不安全的,说说源码-CSDN博客](https://blog.csdn.net/qq_46074155/article/details/120072178)
+
+JDK1.8中的数据覆盖
+
+如下图框中的代码是判断是否出现hash碰撞，假设两个线程A、B都在进行put操作，并且hash函数计算出的插入下标是相同的，当线程A执行完该行判断代码后由于时间片耗尽导致被挂起，而线程B得到时间片后在该下标处插入了元素，完成了正常的插入，然后线程A获得时间片，由于之前已经进行了hash碰撞的判断，所有此时不会再进行判断，而是直接进行插入，这就导致了线程B插入的数据被线程A覆盖了，从而线程不安全。
+
+![](./pic/java/hashmap-1.png)
+
+除此之外，下图pullVal方法中还有框中代码的有个++size语句，如果还是线程A、B，这两个线程同时进行put操作时，假设当前HashMap的size大小为10，当线程A执行到第38行代码时，从主内存中获得size的值为10后准备进行+1操作，但是由于时间片耗尽只好让出CPU，线程B快乐的拿到CPU还是从主内存中拿到size的值10进行+1操作，完成了put操作并将size=11写回主内存，然后线程A再次拿到CPU并继续执行(此时size的值仍为10)，当执行完put操作后，还是将size=11写回内存，此时，线程A、B都执行了一次put操作，但是size的值只增加了1，所有说还是由于数据覆盖又导致了线程不安全。
+
+![](./pic/java/hashmap-2.png)
+
+#### LinkedHashMap
 
 什么是 LinkedHashMap？
 
@@ -1812,11 +1866,11 @@ hashmap在jdk1.8之前是数组+链表的实现方式，jdk1.8之后是数组+�
 
 ![LinkedHashMap 逻辑结构](./pic/linkhashmap-structure-overview.png)
 
-###### LinkedHashMap 如何按照访问顺序迭代元素？
+#### LinkedHashMap 如何按照访问顺序迭代元素？
 
 `LinkedHashMap` 可以通过构造函数中的 `accessOrder` 参数指定按照访问顺序迭代元素。当 `accessOrder` 为 true 时，每次访问一个元素时，该元素会被移动到链表的末尾，因此下次访问该元素时，它就会成为链表中的最后一个元素，从而实现按照访问顺序迭代元素。
 
-###### LinkedHashMap 如何实现 LRU 缓存？
+#### LinkedHashMap 如何实现 LRU 缓存？
 
 将 `accessOrder` 设置为 true 并重写 `removeEldestEntry` 方法当链表大小超过容量时返回 true，使得每次访问一个元素时，该元素会被移动到链表的末尾。一旦插入操作让 `removeEldestEntry` 返回 true 时，视为缓存已满，`LinkedHashMap` 就会将链表首元素移除，由此我们就能实现一个 LRU 缓存。
 
@@ -1855,11 +1909,11 @@ three
 four
 ```
 
-###### 什么是fail-fast机制？fail-fast和fail-safe
+#### 什么是fail-fast机制？fail-fast和fail-safe
 
 [什么是fail-fast - 程序员自由之路 - 博客园](https://www.cnblogs.com/54chensongxia/p/12470446.html) 
 
-###### HashMap 和 TreeMap 区别
+#### HashMap 和 TreeMap 区别
 
 `TreeMap` 和`HashMap` 都继承自`AbstractMap` ，但是需要注意的是`TreeMap`它还实现了`NavigableMap`接口和`SortedMap` 接口。实现 `NavigableMap` 接口让 `TreeMap` 有了对集合内元素的搜索的能力。
 
@@ -1867,7 +1921,7 @@ four
 
 相比于`HashMap`来说 `TreeMap` 主要多了对集合中的元素根据键排序的能力以及对集合内元素的搜索的能力。
 
-###### ConcurrentHashMap 和 Hashtable 的区别
+#### ConcurrentHashMap 和 Hashtable 的区别
 
 `ConcurrentHashMap` 和 `Hashtable` 的区别主要体现在实现线程安全的方式上不同。
 
@@ -1920,13 +1974,13 @@ static final class TreeBin<K,V> extends Node<K,V> {
 }
 ```
 
-###### JDK 1.7 和 JDK 1.8 的 ConcurrentHashMap 实现有什么不同？
+#### JDK 1.7 和 JDK 1.8 的 ConcurrentHashMap 实现有什么不同？
 
 - **线程安全实现方式**：JDK 1.7 采用 `Segment` 分段锁来保证安全， `Segment` 是继承自 `ReentrantLock`。JDK1.8 放弃了 `Segment` 分段锁的设计，采用 `Node + CAS + synchronized` 保证线程安全，锁粒度更细，`synchronized` 只锁定当前链表或红黑二叉树的首节点。
 - **Hash 碰撞解决方法** : JDK 1.7 采用拉链法，JDK1.8 采用拉链法结合红黑树（链表长度超过一定阈值时，将链表转换为红黑树）。
 - **并发度**：JDK 1.7 最大并发度是 Segment 的个数，默认是 16。JDK 1.8 最大并发度是 Node 数组的大小，并发度更大。
 
-###### ConcurrentHashMap 为什么 key 和 value 不能为 null？
+#### ConcurrentHashMap 为什么 key 和 value 不能为 null？
 
 `ConcurrentHashMap` 的 key 和 value 不能为 null 主要是为了避免二义性。null 是一个特殊的值，表示没有对象或没有引用。如果你用 null 作为键，那么你就无法区分这个键是否存在于 `ConcurrentHashMap` 中，还是根本没有这个键。同样，如果你用 null 作为值，那么你就无法区分这个值是否是真正存储在 `ConcurrentHashMap` 中的，还是因为找不到对应的键而返回的。
 
@@ -1943,7 +1997,7 @@ static final class TreeBin<K,V> extends Node<K,V> {
 
 也就是说，多线程下无法正确判定键值对是否存在（存在其他线程修改的情况），单线程是可以的（不存在其他线程修改的情况）。
 
-###### 如何保证 `ConcurrentHashMap` 复合操作的原子性呢？
+#### 如何保证 `ConcurrentHashMap` 复合操作的原子性呢？
 
 `ConcurrentHashMap` 提供了一些原子性的复合操作，如 `putIfAbsent`、`compute`、`computeIfAbsent` 、`computeIfPresent`、`merge`等。这些方法都可以接受一个函数作为参数，根据给定的 key 和 value 来计算一个新的 value，并且将其更新到 map 中。
 
@@ -1967,11 +2021,11 @@ map.computeIfAbsent(key, k -> anotherValue);
 
 很多同学可能会说了，这种情况也能加锁同步呀！确实可以，但不建议使用加锁的同步机制，违背了使用 `ConcurrentHashMap` 的初衷。在使用 `ConcurrentHashMap` 的时候，尽量使用这些原子性的复合操作方法来保证原子性。
 
-###### JDK1.7下ConcurrentHashMap的put方法->ensureSegment方法->put方法赋值
+#### JDK1.7下ConcurrentHashMap的put方法->ensureSegment方法->put方法赋值
 
 ensureSegment的功能是当segement数组此位置为空时，初始化一个segment对象到这个位置。核心逻辑是while循环判断这个位置没有对象，然后调用unsafe方法cas一次，尝试把segment放到这个位置上。
 
-###### JDK1.8下ConcurrentHashMap的put方法
+#### JDK1.8下ConcurrentHashMap的put方法
 
 put方法是比较核心的业务逻辑方法，其主要思路就是：先进入循环，判断如果node数组没有初始化，就先进行初始化操作；接着判断node数组对应位置的node元素是否存在，如果不存在，就尝试cas赋值一次，成功就跳出循环；如果其他线程已经在这个位置放置元素了，就继续走下面逻辑。下面就是根据元素是链表还是红黑树分别进行操作：链表的情况下，一个一个往下判断，检查hash值、key值相同的元素，找到的话就替换对应的value值，直到找到链表尾部，如果还找不到，就新增一个尾部元素；如果是红黑树就直接调用红黑树的方法直接放元素进去。
 
@@ -2058,3 +2112,237 @@ public V put(K key, V value) {
         }
     }
 ```
+
+#### concurrenthashmap的线程安全是怎么实现的？
+
+##### JDK1.7
+
+ConcurrentHashMap 在存储方面是一个 Segment 数组，一个 Segment 就是一个子哈希表，Segment 里维护了一个 HashEntry 数组，其中 Segment 继承自 ReentrantLock，并发环境下，对于不同的 Segment 数据进行操作是不用考虑锁竞争的，因此不会像 Hashtable 那样不管是添加、删除、查询操作都需要同步处理。
+
+**理论上 ConcurrentHashMap 支持 concurrentLevel（通过 Segment 数组长度计算得来） 个线程并发操作，每当一个线程独占一把锁访问 Segment 时，不会影响到其他的 Segment 操作，效率大大提升！**
+
+###### put 方法
+
+![](./pic/java/concurrenthashmap-1.png)
+
+从源码可以看出，真正的 put 操作主要分以下几步：
+
+- 第一步，尝试获取对象锁，如果获取到返回 true，否则执行`scanAndLockForPut`方法，这个方法也是尝试获取对象锁；
+
+- 第二步，获取到锁之后，类似 hashMap 的 put 方法，通过 key 计算所在 HashEntry 数组的下标；
+
+- 第三步，获取到数组下标之后遍历链表内容，通过 key 和 hash 值判断是否 key 已存在，如果已经存在，通过标识符判断是否覆盖，默认覆盖；
+
+- 第四步，如果不存在，采用头插法插入到 HashEntry 对象中；
+
+- 第五步，最后操作完整之后，释放对象锁；
+
+我们再来看看，上面提到的`scanAndLockForPut`这个方法，源码如下：
+
+![](./pic/java/concurrenthashmap-2.png)
+
+`scanAndLockForPut`这个方法，操作也是分以下几步：
+
+- 当前线程尝试去获得锁，查找 key 是否已经存在，如果不存在，就创建一个 HashEntry 对象；
+
+- 如果重试次数大于最大次数，就调用`lock()`方法获取对象锁，如果依然没有获取到，当前线程就阻塞，直到获取之后退出循环；
+
+- 在这个过程中，key 可能被别的线程给插入，所以在第 5 步中，如果 HashEntry 存储内容发生变化，重置重试次数；
+
+通过`scanAndLockForPut()`方法，当前线程就可以在即使获取不到`segment`锁的情况下，完成需要添加节点的实例化工作，当获取锁后，就可以直接将该节点插入链表即可。
+
+这个方法还实现了**类似于自旋锁的功能，循环式的判断对象锁是否能够被成功获取，直到获取到锁才会退出循环，防止执行 put 操作的线程频繁阻塞，这些优化都提升了 put 操作的性能。**
+
+###### get 操作
+
+get 方法就比较简单了，因为不涉及增、删、改操作，所以不存在并发故障问题，源码如下：
+
+![](./pic/java/concurrenthashmap-3.png)
+
+由于 HashEntry 涉及到的共享变量都使用 volatile 修饰，volatile 可以保证内存可见性，所以不会读取到过期数据。
+
+###### remove 操作
+
+remove 操作和 put 方法差不多，都需要获取对象锁才能操作，通过 key 找到元素所在的 Segment 对象然后移除。
+
+##### JDK1.8
+
+虽然 JDK1.7 中的 ConcurrentHashMap 解决了 HashMap 并发的安全性，但是当冲突的链表过长时，在查询遍历的时候依然很慢！
+
+在 JDK1.8 中，HashMap 引入了红黑二叉树设计，当冲突的链表长度大于 8 时，会将链表转化成红黑二叉树结构，红黑二叉树又被称为平衡二叉树，在查询效率方面，又大大的提高了不少。因为 HashMap 并不支持在多线程环境下使用， JDK1.8 中的 ConcurrentHashMap 和往期 JDK 中的 ConcurrentHashMa 一样支持并发操作，整体结构和 JDK1.8 中的 HashMap 类似，相比 JDK1.7 中的 ConcurrentHashMap， 它抛弃了原有的 Segment 分段锁实现，采用了 `CAS + synchronized` 来保证并发的安全性。
+
+JDK1.8 中的 ConcurrentHashMap 对节点`Node`类中的共享变量，和 JDK1.7 一样，使用`volatile`关键字，保证多线程操作时，变量的可见行！
+
+![](./pic/java/concurrenthashmap-4.png)
+
+其他的细节，与 JDK1.8 中的 HashMap 类似，我们来具体看看 put 方法！
+
+###### put 操作
+
+打开 JDK1.8 中的 ConcurrentHashMap 中的 put 方法，源码如下：
+
+![](./pic/java/concurrenthashmap-5.png)
+
+当进行 put 操作时，流程大概可以分如下几个步骤：
+
+- 首先会判断 key、value 是否为空，如果为空就抛异常！
+
+- 接着会判断容器数组是否为空，如果为空就初始化数组；
+
+- 进一步判断，要插入的元素`f`，在当前数组下标是否第一次插入，如果是就通过 CAS 方式插入；
+
+- 在接着判断`f.hash == -1`是否成立，如果成立，说明当前`f`是`ForwardingNode`节点，表示有其它线程正在扩容，则一起进行扩容操作；
+
+- 其他的情况，就是把新的`Node`节点按链表或红黑树的方式插入到合适的位置；
+
+- 节点插入完成之后，接着判断链表长度是否超过`8`，如果超过`8`个，就将链表转化为红黑树结构；
+
+- 最后，插入完成之后，进行扩容判断；
+
+put 操作大致的流程，就是这样的，可以看的出，复杂程度比 JDK1.7 上了一个台阶。
+
+###### initTable 初始化数组
+
+我们再来看看源码中的第 3 步 `initTable()`方法，如果数组为空就**初始化数组**，源码如下：
+
+![](./pic/java/concurrenthashmap-6.png)
+
+sizeCtl 是一个对象属性，使用了 volatile 关键字修饰保证并发的可见性，默认为 0，当第一次执行 put 操作时，通过`Unsafe.compareAndSwapInt()`方法，俗称`CAS`，将 `sizeCtl`修改为 `-1`，有且只有一个线程能够修改成功，接着执行 table 初始化任务。
+
+如果别的线程发现`sizeCtl<0`，意味着有另外的线程执行 CAS 操作成功，当前线程通过执行`Thread.yield()`让出 CPU 时间片等待 table 初始化完成。
+
+###### helpTransfer 帮组扩容
+
+我们继续来看看 put 方法中第 5 步`helpTransfer()`方法，如果`f.hash == -1`成立，说明当前`f`是`ForwardingNode`节点，意味有其它线程正在扩容，则一起进行扩容操作，源码如下：
+
+![](./pic/java/concurrenthashmap-7.png)
+
+这个过程，操作步骤如下：
+
+- 第 1 步，对 table、node 节点、node 节点的 nextTable，进行数据校验；
+
+- 第 2 步，根据数组的 length 得到一个标识符号；
+
+- 第 3 步，进一步校验 nextTab、tab、sizeCtl 值，如果 nextTab 没有被并发修改并且 tab 也没有被并发修改，同时 `sizeCtl < 0`，说明还在扩容；
+
+- 第 4 步，对 sizeCtl 参数值进行分析判断，如果不满足任何一个判断，将`sizeCtl + 1`, 增加了一个线程帮助其扩容;
+
+###### addCount 扩容判断
+
+我们再来看看源码中的第 9 步 `addCount()`方法，插入完成之后，扩容判断，源码如下：
+
+![](./pic/java/concurrenthashmap-8.png)
+
+这个过程，操作步骤如下：
+
+- 第 1 步，利用 CAS 将方法更新 baseCount 的值
+
+- 第 2 步，检查是否需要扩容，默认 check = 1，需要检查；
+
+- 第 3 步，如果满足扩容条件，判断当前是否正在扩容，如果是正在扩容就一起扩容；
+
+- 第 4 步，如果不在扩容，将 sizeCtl 更新为负数，并进行扩容处理；
+
+put 的流程基本分析完了，可以从中发现，里面大量的使用了`CAS`方法，CAS 表示比较与替换，里面有 3 个参数，分别是**目标内存地址、旧值、新值**，每次判断的时候，会将旧值与目标内存地址中的值进行比较，如果相等，就将新值更新到内存地址里，如果不相等，就继续循环，直到操作成功为止！
+
+虽然使用的了`CAS`这种乐观锁方法，但是里面的细节设计的很复杂，阅读比较费神，有兴趣的朋友们可以自己研究一下。
+
+###### get 操作
+
+get 方法操作就比较简单了，因为不涉及并发操作，直接查询就可以了。
+
+![](./pic/java/concurrenthashmap-9.png)
+
+从源码中可以看出，步骤如下：
+
+- 第 1 步，判断数组是否为空，通过 key 定位到数组下标是否为空；
+
+- 第 2 步，判断 node 节点第一个元素是不是要找到，如果是直接返回；
+
+- 第 3 步，如果是红黑树结构，就从红黑树里面查询；
+
+- 第 4 步，如果是链表结构，循环遍历判断；
+
+###### reomve 操作
+
+remove 方法操作和 put 类似，只是方向是反的
+
+![](./pic/java/concurrenthashmap-10.png)
+
+从源码中可以看出，步骤如下：  
+
+- 第 1 步，循环遍历数组，接着校验参数；
+
+- 第 2 步，判断是否有别的线程正在扩容，如果是一起扩容；
+
+- 第 3 步，用 synchronized 同步锁，保证并发时元素移除安全；
+
+- 第 4 步，因为 `check= -1`，所以不会进行扩容操作，利用 CAS 操作修改 baseCount 值；
+
+##### 总结
+
+虽然 HashMap 在多线程环境下操作不安全，但是在 `java.util.concurrent` 包下，java 为我们提供了 ConcurrentHashMap 类，保证在多线程下 HashMap 操作安全！
+
+在 JDK1.7 中，ConcurrentHashMap 采用了分段锁策略，将一个 HashMap 切割成 Segment 数组，其中 Segment 可以看成一个 HashMap， 不同点是 Segment 继承自 ReentrantLock，在操作的时候给 Segment 赋予了一个对象锁，从而保证多线程环境下并发操作安全。
+
+但是 JDK1.7 中，HashMap 容易因为冲突链表过长，造成查询效率低，所以在 JDK1.8 中，HashMap 引入了红黑树特性，当冲突链表长度大于 8 时，会将链表转化成红黑二叉树结构。
+
+在 JDK1.8 中，与此对应的 ConcurrentHashMap 也是采用了与 HashMap 类似的存储结构，但是 JDK1.8 中 ConcurrentHashMap 并没有采用分段锁的策略，而是在元素的节点上采用 `CAS + synchronized` 操作来保证并发的安全性，源码的实现比 JDK1.7 要复杂的多。
+
+#### 还有什么避免hash冲突的方法？
+
+##### 开放地址法
+
+开放地执法有一个公式:Hi=(H(key)+di) MOD m i=1,2,…,k(k<=m-1) 其中，m为哈希表的表长。di 是产生冲突的时候的增量序列。如果di值可能为1,2,3,…m-1，称线性探测再散列。如果di取1，则每次冲突之后，向后移动1个位置.如果di取值可能为1,-1,2,-2,4,-4,9,-9,16,-16,…kk,-kk(k<=m/2)，称二次探测再散列。如果di取值可能为伪随机数列。称伪随机探测再散列。
+
+###### 线性探测法
+
+di=1,2,3,…m-1
+
+ 线行探查法(Linear Probing)是开放定址法中最简单的冲突处理方法，它从发生冲突的单元起，依次判断下一个单元是否为空，当达到最后一个单元时，再从表首依次判断。直到碰到空闲的单元或者探查完全部单元为止。
+
+###### 平方探测法
+
+di=1^2,2^2,3^2,…m-1^2
+
+在实际操作中，平方探测法不能探查到全部剩余的桶。不过在实际应用中，散列表如果大小是素数，并且至少有一半是空的，那么，总能够插入一个新的关键字。若探查到一半桶仍未找一个空闲的，表明此散列表太满，应该重哈希。平方探测法是解决线性探测中一次聚集问题的解决方法，但是，她引入了被称为二次聚集的问题——散列到同一个桶的那些元素将探测到相同的备选桶。下面的技术将会排除这个遗憾，不过要付出计算一个附加的哈希函数的代价。
+
+###### Java中的应用
+
+ThreadLocal的ThreadLocalMap使用了开放地址法解决hash冲突问题。在开放寻址法中，所有的数据都存储在一个数组中，比起链表法来说，冲突的代价更高。所以，使用开放寻址法解决冲突的散列表，装载因子的上限不能太大。这也导致这种方法比链表法更浪费内存空间。但是反过来看，链表法指针需要额外的空间，故当结点规模较小时，开放地址法较为节省空间，而若将节省的指针空间用来扩大散列表的规模，可使装填因子变小，这又减少了开放寻址法中的冲突，从而提高平均查找速度。 
+所以这正是ThreadLocalMap选择开放寻址法的原因。
+
+```java
+// 这里是ThreadLocalMap在hash冲突时获取下一个下标地址的函数
+private static int nextIndex(int i, int len) {
+            return ((i + 1 < len) ? i + 1 : 0);
+        }
+```
+
+##### 再哈希法Rehash
+
+当发生冲突时，使用第二个、第三个、哈希函数计算地址，直到无冲突时。缺点：计算时间增加。比如上面第一次按照姓首字母进行哈希，如果产生冲突可以按照姓字母首字母第二位进行哈希，再冲突，第三位，直到不冲突为止.这种方法不易产生聚集，但增加了计算时间。
+
+##### 链地址法（拉链法）
+
+将所有关键字为同义词的记录存储在同一线性链表中.基本思想:将所有哈希地址为i的元素构成一个称为同义词链的单链表，并将单链表的头指针存在哈希表的第i个单元中，因而查找、插入和删除主要在同义词链中进行。链地址法适用于经常进行插入和删除的情况。对比JDK 1.7 hashMap的存储结构是不是很好理解。至于1.8之后链表长度大于6rehash 为树形结构不在此处讨论。
+
+##### 拉链法的优缺点
+
+###### 优点：
+
+1. 拉链法处理冲突简单，且无堆积现象，即非同义词决不会发生冲突，因此平均查找长度较短；
+
+2. 由于拉链法中各链表上的结点空间是动态申请的，故它更适合于造表前无法确定表长的情况；
+
+3. 开放定址法为减少冲突，要求装填因子α较小，故当结点规模较大时会浪费很多空间。而拉链法中可取α≥1，且结点较大时，拉链法中增加的指针域可忽略不计，因此节省空间；
+
+4. 在用拉链法构造的散列表中，删除结点的操作易于实现。只要简单地删去链表上相应的结点即可。而对开放地址法构造的散列表，删除结点不能简单地将被删结 点的空间置为空，否则将截断在它之后填人散列表的同义词结点的查找路径。这是因为各种开放地址法中，空地址单元(即开放地址)都是查找失败的条件。因此在 用开放地址法处理冲突的散列表上执行删除操作，只能在被删结点上做删除标记，而不能真正删除结点。
+
+###### 缺点：
+
+指针需要额外的空间，故当结点规模较小时，开放定址法较为节省空间，而若将节省的指针空间用来扩大散列表的规模，可使装填因子变小，这又减少了开放定址法中的冲突，从而提高平均查找速度。
+
+##### 建立一个公共溢出区
+
+假设哈希函数的值域为[0,m-1],则设向量HashTable[0..m-1]为基本表，另外设立存储空间向量OverTable[0..v]用以存储发生冲突的记录。

@@ -2983,12 +2983,12 @@ Spring Boot中有这几个配置项：
 ```java
 server:
   tomcat:
-    # 
+    # 等待队列的长度，默认大小是100
     accept-count: 1000
     threads:
-      # tomcat最大线程数，默认为200
+      # Tomcat最多的工作线程数，默认为200
       max: 800
-      # Tomcat启动初始化的线程数，默认值10
+      # Tomcat最少的工作线程数，默认值10
       min-spare: 100
     # 最大连接数，默认为8192
     max-connections: 8192

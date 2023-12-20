@@ -1144,8 +1144,6 @@ volatile只可以用来修饰变量,不可以修饰方法以及类。
 
 **这里举几个比较经典的场景:**
 
-
-
 ### volatile底层怎么保证数据可见性？
 
 volatile关键字是由JVM提供的最轻量级同步机制。与被滥用的synchronized不同，我们并不习惯使用它。想要正确且完全的理解它并不容易。相比于`synchronized`（synchronized通常称为重量级锁），volatile更轻量级，因为它不会引起线程上下文的切换和调度。但是volatile 变量的同步性较差（有时它更简单并且开销更低），而且其使用也更容易出错。
@@ -1389,7 +1387,7 @@ IA32架构软件开发者手册对lock前缀指令的解释：
    
    比如：`a=1;b=a;` 这个指令序列，由于第二个操作依赖于第一个操作，所以在编译时和处理器运行时这两个操作不会被重排序。
 
-1. **重排序是为了优化性能，但是不管怎么重排序，单线程下程序的执行结果不能被改变**
+2. **重排序是为了优化性能，但是不管怎么重排序，单线程下程序的执行结果不能被改变**
    
    比如：`a=1;b=2;c=a+b`这三个操作，第一步（`a=1)`和第二步`(b=2)`由于不存在数据依赖关系， 所以可能会发生重排序，但是`c=a+b`这个操作是不会被重排序的，因为需要保证最终的结果一定是`c=a+b=3`。
 
@@ -1407,7 +1405,6 @@ public void multiply() {
         int ret = a * a;//4
     }
 }
-
 ```
 
 假如有两个线程执行上述代码段，线程1先执行write，随后线程2再执行multiply，最后ret的值一定是4吗？`结果不一定`
@@ -1801,9 +1798,339 @@ public void multiply() {
 
 ### synchronized java底层怎么实现？
 
+#### synchronized使用场景
 
+我们在使用synchronized的时候都知道它是可以使用在方法上的也可以使用在代码块上的，那么使用在这两个地方有什么区别呢？
 
-#### JMeter
+##### synchronized用在方法上
+
+使用在静态方法上，`synchronized`锁住的是类对象。
+
+```java
+public class SynchronizedTest {
+
+    /**     * synchronized 使用在静态方法上     */
+    public static synchronized void test1(){
+        System.out.println("I am test1 method");
+    }
+}
+```
+
+使用在实例方法上，`synchronized`锁住的是实例对象。
+
+```java
+public class SynchronizedTest {
+
+    /**     * synchronized 使用在实例方法上     * @return
+     */
+    public synchronized String syncOnMethod(){
+        return "a developer name Jimoer";
+    }
+}
+```
+
+##### synchronized用在代码块上
+
+`synchronized`的同步代码块用在类实例的对象上，锁住的是当前的类的实例。  
+即执行buildName的时候，整个对象都会被锁住，直到执行完成buildName后释放锁。
+
+```java
+public class SynchronizedTest {
+
+    private String name;
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    /**     * 带姓氏的名称     * @param firstName 姓氏     */
+    public void buildName(String firstName){
+        synchronized(this){
+            this.setName(firstName+this.getName());
+        }
+    }
+}
+```
+
+synchronized的同步代码块用在类对象上，锁住的是该类的类对象。
+
+```java
+public class SynchronizedTest {
+    private static String myName = "Jimoer";
+    /**     * 带姓氏的名称     * @param firstName 姓氏     */
+    public static void buildName(String firstName){
+        synchronized(SynchronizedTest.class){
+            System.out.println(firstName+myName);
+        }
+    }
+}
+```
+
+synchronized的同步代码块用在任意实例对象上，锁住的就是配置的实例对象。
+
+```java
+public class SynchronizedTest {
+    private String lastName;
+
+    public String getLastName() {
+        return lastName;
+    }
+    public void setLastName(String lastName) {
+        this.lastName = lastName;
+    }
+    /**     * 带姓氏的名称     * @param firstName 姓氏     */
+    public void buildName(String firstName){
+        synchronized(lastName){
+            System.out.println(firstName+lastName);
+        }
+    }
+}
+```
+
+synchronized的使用就介绍到这里，正常情况下会用了就可以了，能在实际场景中使用的时候知道锁住的范围就可以了，但是面试的时候可是要问原理的，而且在程序出现问题的时候，知道原理也是能快速定位问题的基础。
+
+#### synchronized的原理
+
+我们来看一下synchronized底层是怎么实现的吧。
+
+例如： 
+下面一段代码，包含一个synchronized代码块和一个synchronized的同步方法。
+
+```java
+public class SynchronizedTest {
+    private static String myName = "Jimoer";
+    public static void main(String[] args) {
+        synchronized (myName){
+            System.out.println(myName);
+        }
+    }
+    /**     * synchronized 使用在静态方法上     */
+    public static synchronized void test1(){
+        System.out.println("I am test1 method");
+    }
+}
+```
+
+在编译完成后生成了class文件，我将class文件反编译出来，看看生成的class文件的内容。
+
+```java
+javap -p -v -c SynchronizedTest.class 
+```
+
+反编译出来的字节码文件内容有点多，我只截取了关键部分来分析。
+
+![](./pic/java/synchronized-1.png)
+
+注意上面我用红框标出来的地方，`synchronized`关键字在经过Javac编译之后，会在同步块的前后形成`monitorenter`和`monitorexit`两个字节码指令。 
+根据《Java虚拟机规范》的要求
+
+- 在执行`monitorenter`指令的时候，首先要去尝试获取对象的锁（**获取对象锁的过程，其实是获取monitor对象的所有权的过程**）。
+- 如果这个对象没被锁定，或者当前线程已经持有了那个对象的锁，就把锁的计数器的值增加一。
+- 而在执行`monitorexit`指令时会将锁计数器减一。一旦计数器的值为零，锁随即就被释放了。
+- 如果获取对象锁失败，那当前线程就应当被阻塞等待，直到请求锁定的对象被持有它的线程释放为止。
+
+##### 同步方法
+
+同步方法test1的反编译后的字节码文件部分如下：
+
+![](./pic/java/synchronized-2.png)
+
+注意我用红框圈起来的部分，这个`ACC_SYNCHRONIZED`标志。代表的是当线程执行到方法后会检查是否有这个标志，如果有的话就会隐式的去调用`monitorenter`和`monitorexit`两个命令来将方法锁住。
+
+##### 简洁地回答`synchroized`的底层原理
+
+Java虚拟机是通过进入和退出Monitor对象来实现代码块同步和方法同步的，代码块同步使用的是`monitorenter`和 `monitorexit` 指令实现的，而方法同步是通过`Access flags`后面的标识来确定该方法是否为同步方法。
+
+##### monitor对象
+
+我在上面说了，获取对象锁的过程，其实是获取monitor对象的所有权的过程。哪个线程持有了monitor对象，那么哪个线程就获得了锁，获得了锁的对象可以重复的来获取monitor对象，但是同一个线程每获取一次monitor对象所有权锁计数就加一，在解锁的时候也是需要将锁计数减成0才算真的释放了锁。 
+monitor对象，我们其实在Java的反编译文件中并没有看到。这个对象是存放在对象头中的。
+
+##### 对象头
+
+这里要介绍一下对象头，首先要说一下对象的内存布局，在HotSpot虚拟机里，对象在堆内存中的存储布局可以划分为三个部分：对象头（Header）、实例数据（Instance Data）和对齐填充（Padding）。
+
+- 实例数据里面存储的是对象的真正有效数据，里面包含各种类型的字段内容，无论是自身的还是从父类继承来的。
+- 对齐填充这部分并不是必然存在的，只是为了占位。虚拟机自动管理内存系统要求对象的大小必须是8字节的整数倍，当整个对象的大小不是8字节的整数倍时，用来对齐填充补全。
+- 对象头部分包含两类信息。
+  1、第一类是自身运行时数据，比如哈希码（hashcode）、GC分代年龄、**锁状态标志**、**线程持有的锁**、**偏向线程ID**等，这部分数据官方称它为“**Mark Word**”。
+  2、第二类是类型指针，即对象指向它的类型元数据的指针，虚拟机通过它来确定对象是哪个类型的实例。
+
+接着回到我们的monitor对象，monitor对象的源码是C++写的，在虚拟机的ObjectMonitor.hpp文件中。
+数据结构长这个样子。
+
+```cpp
+ObjectMonitor() {
+    _header       = NULL;
+    _count        = 0; //锁的计数器，获取锁时count数值加1，释放锁时count值减1，直到
+    _waiters      = 0, //等待线程数
+    _recursions   = 0; //锁的重入次数
+    _object       = NULL; 
+    _owner        = NULL; //指向持有ObjectMonitor对象的线程地址
+    _WaitSet      = NULL; //处于wait状态的线程，会被加入到_WaitSet
+    _WaitSetLock  = 0 ;
+    _Responsible  = NULL ;
+    _succ         = NULL ;
+    _cxq          = NULL ; //阻塞在EntryList上的单向线程列表
+    FreeNext      = NULL ;
+    _EntryList    = NULL ; //处于等待锁block状态的线程，会被加入到该列表
+    _SpinFreq     = 0 ;
+    _SpinClock    = 0 ;
+    OwnerIsThread = 0 ;
+  }
+```
+
+有想对这个monitor对象更深入了解的可以去Java虚拟机的源码里看看。
+
+其中 _owner、_WaitSet和_EntryList 字段比较重要，它们之间的转换关系如下图
+
+![](./pic/java/synchronized-7.webp)
+
+从上图可以总结获取Monitor和释放Monitor的流程如下：
+
+1. 当多个线程同时访问同步代码块时，首先会进入到EntryList中，然后通过CAS的方式尝试将Monitor中的owner字段设置为当前线程，同时count加1，若发现之前的owner的值就是指向当前线程的，recursions也需要加1。如果CAS尝试获取锁失败，则进入到EntryList中。
+2. 当获取锁的线程调用`wait()`方法，则会将owner设置为null，同时count减1，recursions减1，当前线程加入到WaitSet中，等待被唤醒。
+3. 当前线程执行完同步代码块时，则会释放锁，count减1，recursions减1。当recursions的值为0时，说明线程已经释放了锁。
+
+> 有一个常见面试题，为什么`wait()`、`notify()`等方法要在同步方法或同步代码块中来执行呢，这里就能找到原因，是因为`wait()`、`notify()`方法需要借助ObjectMonitor对象内部方法来完成。
+
+##### 重量级锁
+
+在主流的Java虚拟机实现中，Java的线程是映射到操作系统的原生内核线程之上的，如果要阻塞或唤醒一条线程，则需要操作系统来帮忙完成，这就不可避免地陷入用户态到核心态的转换中，这种状态的转换要耗费很多的处理时间。
+所以在ObjectMonitor文件中的调用过程和复杂的操作系统运行机制导致线程的阻塞或唤醒时是很耗费资源的。
+这样在JDK1.6之前都称synchronized为重量级锁。
+
+##### 重量级锁的减重
+
+高效并发是从JDK5升级到JDK6的一项重要的改进项，在JDK6版本上虚拟机开发团队花费了大量的资源去实现各种锁优化技术，来为重量级锁减重。
+synchronized在升级后的整个加锁过程，大致如下图。
+
+![](./pic/java/synchronized-3.png)
+
+这里要说明一下，锁升级的过程是不可逆的。
+
+##### 偏向锁
+
+> 常见面试题：偏向锁的原理（或偏向锁的获取流程）、偏向锁的好处是什么（获取偏向锁的目的是什么）
+
+引入偏向锁的目的：减少只有一个线程执行同步代码块时的性能消耗，即在没有其他线程竞争的情况下，一个线程获得了锁。
+
+偏向锁的获取流程：
+
+1. 检查对象头中Mark Word是否为可偏向状态，如果不是则直接升级为轻量级锁。
+2. 如果是，判断Mark Work中的线程ID是否指向当前线程，如果是，则执行同步代码块。
+3. 如果不是，则进行CAS操作竞争锁，如果竞争到锁，则将Mark Work中的线程ID设为当前线程ID，执行同步代码块。
+4. 如果竞争失败，升级为轻量级锁。
+
+偏向锁的获取流程如下图：
+
+![](./pic/java/synchronized-4.png)
+
+偏向锁的撤销：
+
+只有等到竞争，持有偏向锁的线程才会撤销偏向锁。偏向锁撤销后会恢复到无锁或者轻量级锁的状态。
+
+1. 偏向锁的撤销需要到达全局安全点，全局安全点表示一种状态，该状态下所有线程都处于暂停状态。
+2. 判断锁对象是否处于无锁状态，即获得偏向锁的线程如果已经退出了临界区，表示同步代码已经执行完了。重新竞争锁的线程会进行CAS操作替代原来线程的ThreadID。
+3. 如果获得偏向锁的线程还处于临界区之内，表示同步代码还未执行完，将获得偏向锁的线程升级为轻量级锁。
+
+一句话简单总结偏向锁原理：使用CAS操作将当前线程的ID记录到对象的Mark Word中。
+
+##### 轻量级锁
+
+引入轻量级锁的目的：在多线程交替执行同步代码块时（未发生竞争），避免使用互斥量（重量锁）带来的性能消耗。但多个线程同时进入临界区（发生竞争）则会使得轻量级锁膨胀为重量级锁。
+
+轻量级锁的获取流程：
+
+- 首先判断当前对象是否处于一个无锁的状态，如果是，Java虚拟机将在当前线程的栈帧建立一个锁记录（Lock Record），用于存储对象目前的Mark Word的拷贝，如图所示。
+
+![](./pic/java/synchronized-5.png)
+
+- 将对象的Mark Word复制到栈帧中的Lock Record中，并将Lock Record中的owner指向当前对象，并使用CAS操作将对象的Mark Word更新为指向Lock Record的指针，如图所示。
+
+![](./pic/java/synchronized-6.png)
+
+- 如果第二步执行成功，表示该线程获得了这个对象的锁，将对象Mark Word中锁的标志位设置为“00”，执行同步代码块。
+- 如果第二步未执行成功，需要先判断当前对象的Mark Word是否指向当前线程的栈帧，如果是，表示当前线程已经持有了当前对象的锁，这是一次重入，直接执行同步代码块。如果不是表示多个线程存在竞争，该线程通过自旋尝试获得锁，即重复步骤2，自旋超过一定次数，轻量级锁升级为重量级锁。
+
+轻量级锁的解锁：
+
+轻量级的解锁同样是通过CAS操作进行的，线程会通过CAS操作将Lock Record中的Mark Word（官方称为Displaced Mark Word）替换回来。如果成功表示没有竞争发生，成功释放锁，恢复到无锁的状态；如果失败，表示当前锁存在竞争，升级为重量级锁。
+
+一句话总结轻量级锁的原理：将对象的Mark Word复制到当前线程的Lock Record中，并将对象的Mark Word更新为指向Lock Record的指针。
+
+##### 自旋锁
+
+Java锁的几种状态并不包括自旋锁，当轻量级锁的出现竞争就是采用的自旋锁机制。
+
+什么是自旋锁：当线程A已经获得锁时，线程B再来竞争锁，线程B不会直接被阻塞，而是在原地循环 等待，当线程A释放锁后，线程B可以马上获得锁。
+
+引入自旋锁的原因：因为阻塞和唤起线程都会引起操作系统用户态和核心态的转变，对系统性能影响较大，而自旋等待可以避免线程切换的开销。
+
+自旋锁的缺点：自旋等待虽然可以避免线程切花的开销，但它也会占用处理器的时间。如果持有锁的线程在较短的时间内释放了锁，自旋锁的效果就比较好，如果持有锁的线程很长时间都不释放锁，自旋的线程就会白白浪费资源，所以一般线程自旋的次数必须有一个限制，该次数可以通过参数-XX:PreBlockSpin调整，一般默认为10。
+
+自适应自旋锁：JDK1.6引入了自适应自旋锁，自适应自旋锁的自旋次数不在固定，而是由上一次在同一个锁上的自旋时间及锁的拥有者的状态来决定的。如果对于某个锁对象，刚刚有线程自旋等待成功获取到锁，那么虚拟机将认为这次自旋等待的成功率也很高，会允许线程自旋等待的时间更长一些。如果对于某个锁对象，线程自旋等待很少成功获取到锁，那么虚拟机将会减少线程自旋等待的时间。
+
+![](./pic/java/synchronized-6.png)
+
+##### 偏向锁、轻量级锁、重量级锁的对比
+
+![](./pic/java/synchronized-8.webp)
+
+该表格出自《Java并发编程的艺术》
+
+#### 了解锁消除吗？
+
+锁消除是指Java虚拟机在即时编译时，通过对运行上下的扫描，消除那些不可能存在共享资源竞争的锁。锁消除可以节约无意义的请求锁时间。
+
+#### 了解锁粗化吗
+
+一般情况下，为了提高性能，总是将同步块的作用范围限制到最小，这样可以使得需要同步的操作尽可能地少。但如果一系列连续的操作一直对某个对象反复加锁和解锁，频繁地进行互斥同步操作也会引起不必要的性能消耗。
+
+如果虚拟机检测到有一系列操作都是对某个对象反复加锁和解锁，会将加锁同步的范围粗化到整个操作序列的外部。可以看下面这个经典案例。
+
+```java
+for(int i=0;i<n;i++){
+    synchronized(lock){
+    }
+}
+```
+
+这段代码会导致频繁地加锁和解锁，锁粗化后
+
+```java
+synchronized(lock){
+    for(int i=0;i<n;i++){
+    }
+}
+```
+
+#### 当线程1进入到一个对象的synchronized方法A后，线程2是否可以进入到此对象的synchronized方法B?
+
+不能，线程2只能访问该对象的非同步方法。因为执行同步方法时需要获得对象的锁，而线程1在进入`sychronized`修饰的方A时已经获取到了锁，线程2只能等待，无法进入到`synchronized`修饰的方法B，但可以进入到其他非`synchronized`修饰的方法。
+
+#### synchronized和volatile的区别？
+
+- `volatile`主要是保证内存的可见性，即变量在寄存器中的内存是不确定的，需要从主存中读取。`synchronized`主要是解决多个线程访问资源的同步性。
+- `volatile`作用于变量，`synchronized`作用于代码块或者方法。
+- `volatile`仅可以保证数据的可见性，不能保证数据的原子性。`synchronized`可以保证数据的可见性和原子性。
+- `volatile`不会造成线程的阻塞，`synchronized`会造成线程的阻塞。
+
+#### synchronized和Lock的区别？
+
+- Lock是显式锁，需要手动开启和关闭。synchronized是隐式锁，可以自动释放锁。
+- Lock是一个接口，是JDK实现的。synchronized是一个关键字，是依赖JVM实现的。
+- Lock是可中断锁，synchronized是不可中断锁，需要线程执行完才能释放锁。
+- 发生异常时，Lock不会主动释放占有的锁，必须通过unlock进行手动释放，因此可能引发死锁。synchronized在发生异常时会自动释放占有的锁，不会出现死锁的情况。
+- Lock可以判断锁的状态，synchronized不可以判断锁的状态。
+- Lock实现锁的类型是可重入锁、公平锁。synchronized实现锁的类型是可重入锁，非公平锁。
+- Lock适用于大量同步代码块的场景，synchronized适用于少量同步代码块的场景。
+
+### JMeter
 
 JMeter是一个功能强大的开源性能测试工具，由Apache软件基金会开发和维护。它主要用于进行压力测试、负载测试和性能测试，以评估Web应用程序、Web服务、数据库和其他类型的服务在不同负载条件下的性能。
 
@@ -2327,9 +2654,27 @@ Java的堆由新生代（Young Generation）和老年代（Old Generation）组�
 
 老年代（Old）是对象存活时间最长的部分，它由单一存活区（Tenured）组成，并且把经历过若干轮GC回收还存活下来的对象移动而来。在老年代中，大部分对象都是活了很久的，所以GC回收它们会很慢。
 
+#### Java的对象分代回收过程
+
+- 绝大多数刚刚被创建的对象会存放在 Eden 区。
+- 当 `Eden` 区第一次满的时候，会进行垃圾回收。首先将 `Eden` 区的垃圾对象回收清除，并将存活的对象复制到 `From Survivor`，此时 `To Survivor` 是空的。
+- 下一次 `Eden` 区满时，再执行一次垃圾回收。此次会将 `Eden` 和 `From Survivor` 区中所有垃圾对象清除，并将存活对象复制到 `To Survivor`，此时 `From Survivor` 变为空。
+- 如此反复在 `From Survivor` 和 `To Survivor` 之间切换几次（默认 15 次）之后，如果还有存活对象。说明这些对象的生命周期较长，则将它们转移到老年代中。
+
+> **注意**：对于老年代可能存在这么一种情况，老年代中的对象有时候会引用到新生代对象。这时如果要执行新生代 GC，则可能需要查询整个老年代上可能存在引用新生代的情况，这显然是低效的。所以，老年代中维护了一个 512 byte 的 `card table`，所有老年代对象引用新生代对象的信息都记录在这里。每当新生代发生 GC 时，只需要检查这个 `card table` 即可，大大提高了性能。
+
+### GC分类
+
+新生代和老年代所进行的GC是有区别的：
+
+- 新生代 GC：这一区域的 GC 叫作 Minor GC。因为 Java 对象大多都具备朝生夕灭的特性，所以 Minor GC 非常频繁，一般回收速度也比较快。
+- 老年代 GC：发生在这一区域的 GC 也叫作 Major GC 或者 Full GC。当出现了 Major GC，经常会伴随至少一次的 Minor GC。
+
+> 注意：在有些虚拟机实现中，`Major GC` 和 `Full GC` 还是有一些区别的。`Major GC` 只是代表回收老年代的内存，而 `Full GC` 则代表回收整个堆中的内存，也就是新生代 + 老年代。
+
 ### 对象的分代晋升
 
-一般情况下，对象将在新生代进行分配，首先会尝试在Eden区分配对象，当Eden内存耗尽，无法满足新的对象分配请求时，将触发新生代的GC(Young GC、MinorGC)，在新生代的GC过程中，没有被回收的对象会从Eden区被搬运到Survivor区，这个过程通常被称为"晋升"
+一般情况下，对象将在新生代进行分配，首先会尝试在Eden区分配对象，当Eden内存耗尽，无法满足新的对象分配请求时，将触发新生代的GC(Young GC、MinorGC)，在新生代的GC过程中，没有被回收的对象会从Eden区被搬运到Survivor区，这个过程通常被称为"晋升"。如果对象比较大（比如长字符串或者大数组），并且新生代的剩余空间不足，则这个大对象会直接被分配到老年代上。
 
 同样的，对象也可能会晋升到老年代，触发条件主要看对象的大小和年龄。对象进入老年代的条件有三个，满足一个就会进入到老年代：
 
@@ -2385,7 +2730,7 @@ uint ageTable::compute_tenuring_threshold(size_t survivor_capacity) {
 
 如果小于，那么虚拟机会查看HandlePromotionFailure 参数设置的值判断是否允许担保失败。如果值为true，那么会继续检查老年代最大可用连续空间是否大于历次晋升到老年代的对象的平均大小（一共有多少对象在内存回收后存活下来是不可预知的，因此只好取之前每次垃圾回收后晋升到老年代的对象大小的平均值作为参考）。如果大于，则尝试进行一次YoungGC，但这次YoungGC依然是有风险的；如果小于，或者HandlePromotionFailure=false，则会直接触发一次Full GC。
 
-但是，需要注意的是HandlePromotionFailure这个参数，在JDK 7中就不再支持了。在JDK代码中，移除了这个参数的判断（https://github.com/openjdk/jdk/commit/cbc7f8756a7e9569bbe1a38ce7cab0c0c6002bf7 ），也就是说，在后续的版本中， 只要检查老年代最大可用连续空间是否大于历次晋升到老年代的对象的平均大小，如果大于，则认为担保成功。
+但是，需要注意的是HandlePromotionFailure这个参数，在JDK 7中就不再支持了。在JDK代码中，移除了这个参数的判断（https://github.com/openjdk/jdk/commit/cbc7f8756a7e9569bbe1a38ce7cab0c0c6002bf7 ），也就是说，在后续的版本中， 只要检查老年代最大可用连续空间是否大于历次晋升到老年代的对象的平均大小，如果大于，则认为担保成功，可以进行YoungGC，担保失败，则需要进行Full GC。
 
 但是需要注意的是，担保的结果可能成功，也可能失败。所以，在YoungGC的复制阶段执行之后，会发生以下三种情况：
 
@@ -2457,17 +2802,17 @@ GC roots是作为可达性分析算法的起点的。要实现语义正确的可
 
 1. Class - 由系统类加载器(system class loader)加载的对象，这些类是不能够被回收的，他们可以以静态字段的方式保存持有其它对象。
 
-2. Thread - 活着的线程 
+2. 当前运行的方法中的参数、局部变量、临时变量 
 
-3. Stack Local - Java方法的local变量或参数
+3. 方法区中类的静态属性引用的对象（基本数据类型和引用类型）
 
-4. JNI Local - JNI方法的local变量或参数
+4. 方法区中常量引用的对象，例如字符串常量池中的引用
 
-5. JNI Global - 全局JNI引用
+5. JNI本地方法栈中引用的对象
 
-6. Monitor Used - 被同步锁（synchronized）持有的对象
+6. 被同步锁（synchronized）持有的对象
 
-7. Held by JVM - 用于JVM特殊目的由GC保留的对象，但实际上这个与JVM的实现是有关的。可能已知的一些类型是：系统类加载器、一些JVM知道的重要的异常类、一些用于处理异常的预分配对象以及一些自定义的类加载器等。然而，JVM并没有为这些对象提供其它的信息，因此需要去确定哪些是属于"JVM持有"的了。
+7. 用于JVM特殊目的由GC保留的对象，但实际上这个与JVM的实现是有关的。可能已知的一些类型是：系统类加载器、一些JVM知道的重要的异常类、一些用于处理异常的预分配对象以及一些自定义的类加载器等。然而，JVM并没有为这些对象提供其它的信息，因此需要去确定哪些是属于"JVM持有"的了。
 
 以上，比如系统类加载器加载的对象、活着的线程、方法中的本地变量、被synchronized锁定的对象这些，都是符合活跃的引用这个条件的！
 
@@ -2585,7 +2930,7 @@ G1，Garbage First，是CMS的改进版，解决了CMS内存碎片、更多的�
 
 3. 空间整合：由于G1使用了独立区域（Region）概念，G1从整体来看是基于标记-整理算法实现收集，从局部（两个Region）上来看是基于标记-复制算法实现的，但无论如何，这两种算法都意味着G1运作期间不会产生内存空间碎片。
 
-4. 可预测的停顿：这是G1相对于CMS的另一大优势，降低停顿时间是G1和CMS共同的关注点，但G1除了追求低停顿外，还能建立可预测的停顿时间模型，能让使用者明确指定一个长度为M毫秒的时间片段内，消耗在垃圾收集上的时间不得超过N毫秒。
+4. 以用户设置的收集停顿时间为首要目标：这是G1相对于CMS的另一大优势，降低停顿时间是G1和CMS共同的关注点，但G1除了追求低停顿外，还能建立可预测的停顿时间模型，能让使用者明确指定一个长度为M毫秒的时间片段内，消耗在垃圾收集上的时间不得超过N毫秒。G1会对每个region进行价值判断：一次回收平均清除了多少内存，一次回收平均占用时间。对于价值较高的region，G1优先进行回收。G1不再是原先垃圾收集器要清理全部内存空间的目标，而是在用户设置的收集停顿时间内清除最有回收价值的region。也就是说，从G1开始，垃圾收集器的首要目标不是清除干净全部内存区域，而是清理速度赶得上对象分配速度即可。
 
 5. 支持热插拔：G1可以在运行时动态调整堆的大小，以适应不同的内存需求。
 
@@ -2625,6 +2970,14 @@ ZGC是Java 11中引入的一种新的垃圾回收器，具有以下几个特点�
 
 因此，ZGC是一种新的、高效的、低停顿的垃圾回收器，适用于内存大小从几GB到数TB的应用程序。它的设计目标是在保证高吞吐量的同时保证最短的暂停时间，并且易于使用和维护。
 
+### jdk从哪里开始不是分代收集？
+
+Shenandoah和ZGC默认不存在分代概念。这两款垃圾收集器也是继承了G1的region概念，换句话说这两款不再划分新生代region和老年代region的概念了。
+
+Shenandoah使用了一种连接矩阵来记录跨region引用的情况（记忆集），即x行y列是1代表x region对yregion有对象引用。
+
+ZGC的region划分为三种规模的大小：小型region、中型region、大型region。
+
 ### Java 8 和 Java 11 的GC有什么区别？
 
 Java 8 和 Java 11都是LTS版本的JDK，所以会有人经常问他们之间的区别。特别是在GC上面的差别。
@@ -2638,6 +2991,16 @@ Java 8 和 Java 11都是LTS版本的JDK，所以会有人经常问他们之间�
 在垃圾识别及回收上面，Java 8基于的是单纯地可达性分析，而Java 11中的G1采用的是三色标记法，可以大大降低STW的时长。
 
 另外，G1的内存划分是自适应的，它会根据堆的大小和使用情况来动态调整各个区域的大小和比例。而Parallel Scavenge GC+Parallel Old GC都是固定分配的策略。
+
+### 引用
+
+根据引用强度的由强到弱，Java中存在四种引用类型：**强引用(Strong Reference)、软引用(Soft Reference)、弱引用(Weak Reference)、虚引用(Phantom Reference)**。
+
+![](./pic/java/引用-1.webp)
+
+**需要注意的是**，被软引用对象关联的对象会自动被垃圾回收器回收，但是软引用对象本身也是一个对象，这些创建的软引用并不会自动被垃圾回收器回收掉。
+
+![](./pic/java/引用-2.webp)
 
 ## 限流算法
 
@@ -2700,9 +3063,9 @@ JVM:G1收集器--ok
 
 GC的垃圾回收算法有哪些？可达性分析算法是啥？具体解释下--ok
 
-分代回收过程说下
+分代回收过程说下--ok
 
-jdk从哪里开始不是分代收集
+jdk从哪里开始不是分代收集--ok
 
 hashmap为什么不是线程安全的 --ok
 
@@ -2728,7 +3091,7 @@ java的一些锁你了解多少？
 
 threadlocal你知道吗？--ok
 
-如何创建线程池呢？线程池的配置你会怎么配置呢？那io十分频繁的情况下怎么配置？还知道其他配置参数吗？
+如何创建线程池呢？线程池的配置你会怎么配置呢？那io十分频繁的情况下怎么配置？还知道其他配置参数吗？--ok
 
 说下类加载机制？知道java底层代码怎么实现类加载的吗？--ok
 

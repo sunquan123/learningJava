@@ -1831,7 +1831,7 @@ public class SynchronizedTest {
 
 ##### synchronized用在代码块上
 
-`synchronized`的同步代码块用在类实例的对象上，锁住的是当前的类的实例。  
+`synchronized`的同步代码块用在类实例的对象上，锁住的是当前的类的实例。 
 即执行buildName的时候，整个对象都会被锁住，直到执行完成buildName后释放锁。
 
 ```java
@@ -1925,7 +1925,7 @@ javap -p -v -c SynchronizedTest.class
 
 ![](./pic/java/synchronized-1.png)
 
-注意上面我用红框标出来的地方，`synchronized`关键字在经过Javac编译之后，会在同步块的前后形成`monitorenter`和`monitorexit`两个字节码指令。 
+注意上面我用红框标出来的地方，`synchronized`关键字在经过Javac编译之后，会在同步代码块的前后形成`monitorenter`和`monitorexit`两个字节码指令。 
 根据《Java虚拟机规范》的要求
 
 - 在执行`monitorenter`指令的时候，首先要去尝试获取对象的锁（**获取对象锁的过程，其实是获取monitor对象的所有权的过程**）。
@@ -3085,7 +3085,7 @@ concurrenthashmap的线程安全是怎么实现的？--ok
 
 解释一下voletile使用流程和理解？底层怎么保证数据可见性？--ok
 
-synchronized java底层怎么实现？
+synchronized java底层怎么实现？--ok
 
 java的一些锁你了解多少？
 
@@ -3097,13 +3097,13 @@ threadlocal你知道吗？--ok
 
 GC了解吗？先解释下--ok
 
-mysql的索引
+mysql的索引--ok
 
-用过redis是吧，解释下redis的过期是怎么实现的？
+用过redis是吧，解释下redis的过期是怎么实现的？--ok
 
 说一下常用的docker命令？知道k8s吗
 
-nginx配置有没有遇到啥问题？
+nginx配置有没有遇到啥问题？--ok
 
 来聊聊spring吧，先解释AOP和IOC 你用过aop干啥？
 

@@ -1959,7 +1959,9 @@ public class RegisterService{
 
 在我们的RegisterService中，我们在用户注册成功之后，调用applicationContext.publishEvent即可把我们的注册成功事件广播出去了。
 
-但是需要注意的是，默认情况下，Spring Event的调用时同步调用的。如果想要实现异步调用，也是支持的，最简单的方式就是借助@Async 注解：
+但是需要注意的是，默认情况下，Spring Event的调用是同步的，这意味着发布者线程将阻塞，直到所有侦听器都完成对事件的处理为止。
+
+如果想要实现异步调用，也是支持的，最简单的方式就是借助@Async 注解：
 
 修改监听器，增加@Async 注解：
 
@@ -2114,6 +2116,86 @@ phase 属性用于指定事件监听器的触发时机，它有四种不同的�
 3. AFTER_ROLLBACK：在事务回滚后触发。事件监听器将在事务回滚后执行，这通常用于清理或记录与事务回滚相关的操作。
 
 4. AFTER_COMPLETION：在事务完成（不管是提交还是回滚）后触发。事件监听器将在事务完成后执行，无论事务是否成功提交或回滚。这个阶段通常用于执行一些与事务状态无关的清理工作。
+
+## Spring Boot的 Application Events
+
+Spring Boot提供了几个与SpringApplication生命周期相关的预定义ApplicationEvent。
+
+在创建ApplicationContext之前会触发一些事件，因此我们无法将这些事件注册为@Bean。我们可以通过手动添加侦听器来注册这些事件的侦听器：
+
+```java
+@SpringBootApplication
+public class EventsDemoApplication {
+
+  public static void main(String[] args) {
+    SpringApplication springApplication = 
+        new SpringApplication(EventsDemoApplication.class);
+    springApplication.addListeners(new SpringBuiltInEventsListener());
+    springApplication.run(args);
+  }
+}
+```
+
+通过将META-INF/spring.factories文件添加到我们的项目中，我们还可以注册侦听器，而不管如何创建应用程序，并使用org.springframework.context.ApplicationListener键引用侦听器：
+
+org.springframework.context.ApplicationListener= com.reflectoring.eventdemo.SpringBuiltInEventsListener
+
+```java
+class SpringBuiltInEventsListener 
+    implements ApplicationListener<SpringApplicationEvent>{
+
+  @Override
+  public void onApplicationEvent(SpringApplicationEvent event) {
+    // handle event
+  }
+}
+```
+
+确定事件监听器已正确注册后，便可以监听所有Spring Boot的SpringApplicationEvents。让我们按照它们在应用程序启动过程中的执行顺序来进行观察。
+
+### ApplicationStartingEvent
+
+除了运行侦听器和初始化程序的注册之外，ApplicationStartingEvent在运行开始时但在任何处理之前都会触发。
+
+### ApplicationEnvironmentPreparedEvent
+
+当上下文中使用的环境可用时，将触发ApplicationEnvironmentPreparedEvent。
+
+由于此时环境已准备就绪，因此我们可以在其他Bean使用它之前对其进行检查和修改。
+
+### ApplicationContextInitializedEvent
+
+当ApplicationContext准备就绪并且调用ApplicationContextInitializers但尚未加载bean定义时，将触发ApplicationContextInitializedEvent。
+
+在bean初始化到Spring容器之前，我们可以使用它来执行任务。
+
+### ApplicationPreparedEvent
+
+准备好ApllicationContext但未刷新时会触发ApplicationPreparedEvent。
+
+该环境已准备就绪，可以使用，并且将加载Bean定义。
+
+### WebServerInitializedEvent
+
+如果我们使用的是网络服务器，则在网络服务器准备就绪后会触发WebServerInitializedEvent。 ServletWebServerInitializedEvent和ReactiveWebServerInitializedEvent分别是servlet和反应式网络服务。
+
+**WebServerInitializedEvent不扩展SpringApplicationEvent。**
+
+### ApplicationStartedEvent
+
+在刷新上下文之后但在调用任何应用程序和命令行运行程序之前，将触发ApplicationStartedEvent。
+
+### ApplicationReadyEvent
+
+触发ApplicationReadyEvent来指示该应用程序已准备就绪，可以处理请求。
+
+建议此时不要修改内部状态，因为所有初始化步骤都将完成。
+
+### ApplicationFailedEvent
+
+如果存在异常并且应用程序无法启动，则会触发ApplicationFailedEvent。在启动期间的任何时间都可能发生这种情况。
+
+我们可以使用它来执行一些任务，例如执行脚本或在启动失败时发出通知。
 
 ## Spring中shutdownhook作用是什么？
 

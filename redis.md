@@ -1895,6 +1895,171 @@ Redis不是号称单线程也有很高的性能么？
 
 Redis 6.0 只有在网络请求的接收和解析，以及请求后的数据通过网络返回给时，使用了多线程。而数据读写操作还是由单线程来完成的，所以，这样就不会出现并发问题了。
 
+## Redis如何应对大key删除太慢的问题？
+
+Redis4.0新增了非常实用的lazy free特性，从根本上解决Big Key(主要指定元素较多集合类型Key)删除的风险。
+
+### lazy free的定义
+
+lazy free可译为惰性删除或延迟释放；当删除键的时候,redis提供异步延时释放key内存的功能，把key释放操作放在bio(Background I/O)单独的子线程处理中，减少删除big key对redis主线程的阻塞。有效地避免删除big key带来的性能和可用性问题。
+
+redis4.0有lazy free功能后，这类主动或被动的删除big key时，和一个O(1)指令的耗时一样,亚毫秒级返回； 把真正释放redis元素耗时动作交由bio后台任务执行。在redis4.0前，没有lazy free功能；DBA只能通过取巧的方法，类似scan big key,每次删除100个元素；但在面对“被动”删除键的场景，这种取巧的删除就无能为力。
+例如：我们生产Redis Cluster大集群，业务缓慢地写入一个带有TTL的2000多万个字段的Hash键，当这个键过期时，redis开始被动清理它时，导致redis被阻塞20多秒，当前分片主节点因20多秒不能处理请求，并发生主库故障切换。
+
+### lazy free的使用
+
+lazy free的使用分为2类：第一类是与DEL命令对应的主动删除，第二类是过期key删除、maxmemory key驱逐淘汰删除。
+
+#### 主动删除键使用lazy free
+
+##### UNLINK命令
+
+UNLINK命令是与DEL一样删除key功能的lazy free实现。唯一不同时，UNLINK在删除集合类键时，如果集合键的元素个数大于64个(详细后文），会把真正的内存释放操作，给单独的bio来操作。示例如下：使用UNLINK命令删除一个大键mylist, 它包含200万个元素，但用时只有0.03毫秒。
+
+##### FLUSHALL/FLUSHDB ASYNC
+
+通过对FLUSHALL/FLUSHDB添加ASYNC异步清理选项，redis在清理整个实例或DB时，操作都是异步的。
+
+#### 被动删除键使用lazy free
+
+lazy free应用于被动删除中，目前有4种场景，每种场景对应一个配置参数； 默认都是关闭。
+
+```none
+lazyfree-lazy-eviction no
+lazyfree-lazy-expire no
+lazyfree-lazy-server-del no
+slave-lazy-flush no
+```
+
+注意：从测试来看lazy free回收内存效率还是比较高的； 但在生产环境请结合实际情况，开启被动删除的lazy free 观察redis内存使用情况。
+
+##### lazyfree-lazy-eviction
+
+针对redis内存使用达到maxmeory，并设置有淘汰策略时；在被动淘汰键时，是否采用lazy free机制；
+因为此场景开启lazy free, 可能使用淘汰键的内存释放不及时，导致redis内存超用，超过maxmemory的限制。此场景使用时，请结合业务测试。
+
+##### lazyfree-lazy-expire
+
+针对设置有TTL的键，达到过期后，被redis清理删除时是否采用lazy free机制；
+此场景建议开启，因TTL本身是自适应调整的速度。
+
+##### lazyfree-lazy-server-del
+
+针对有些指令在处理已存在的键时，会带有一个隐式的DEL键的操作。如rename命令，当目标键已存在,redis会先删除目标键，如果这些目标键是一个big key,那就会引入阻塞删除的性能问题。 此参数设置就是解决这类问题，建议可开启。
+
+##### slave-lazy-flush
+
+针对slave进行全量数据同步，slave在加载master的RDB文件前，会运行flushall来清理自己的数据场景，参数设置决定是否采用异常flush机制。如果内存变动不大，建议可开启。可减少全量同步耗时，从而减少主库因输出缓冲区爆涨引起的内存使用增长。
+
+### lazy free的监控
+
+lazy free能监控的数据指标，只有一个值：lazyfree_pending_objects，表示redis执行lazy free操作，在等待被实际回收内容的键个数。并不能体现单个大键的元素个数或等待lazy free回收的内存大小。
+所以此值有一定参考值，可监测redis lazy free的效率或堆积键数量； 比如在flushall async场景下会有少量的堆积。
+
+### lazy free实现的简单分析
+
+antirez为实现lazy free功能，对很多底层结构和关键函数都做了修改；该小节只介绍lazy free的功能实现逻辑；代码主要在源文件lazyfree.c和bio.c中。
+
+#### UNLINK命令
+
+unlink命令入口函数unlinkCommand()和del调用相同函数delGenericCommand()进行删除KEY操作，使用lazy标识是否为lazyfree调用。如果是lazyfree,则调用dbAsyncDelete()函数。
+
+但并非每次unlink命令就一定启用lazy free，redis会先判断释放KEY的代价(cost),当cost大于LAZYFREE_THRESHOLD才进行lazy free. 
+
+释放key代价计算函数lazyfreeGetFreeEffort()，集合类型键，且满足对应编码，cost就是集合键的元数个数，否则cost就是1. 
+举例：  
+
+1. 一个包含100元素的list key, 它的free cost就是100
+
+2. 一个512MB的string key, 它的free cost是1
+
+所以可以看出，redis的lazy free的cost计算主要时间复杂度相关。
+
+lazyfreeGetFreeEffort()函数代码
+
+```c
+size_t lazyfreeGetFreeEffort(robj *obj) {
+ if (obj->type == OBJ_LIST) { 
+ quicklist *ql = obj->ptr;
+ return ql->len;
+ } else if (obj->type == OBJ_SET && obj->encoding == OBJ_ENCODING_HT) {
+ dict *ht = obj->ptr;
+ return dictSize(ht);
+ } else if (obj->type == OBJ_ZSET && obj->encoding == OBJ_ENCODING_SKIPLIST){
+ zset *zs = obj->ptr;
+ return zs->zsl->length;
+ } else if (obj->type == OBJ_HASH && obj->encoding == OBJ_ENCODING_HT) {
+ dict *ht = obj->ptr;
+ return dictSize(ht);
+ } else {
+ return 1; /* Everything else is a single allocation. */
+ }
+}
+```
+
+dbAsyncDelete()函数的部分代码
+
+```c
+#define LAZYFREE_THRESHOLD 64 //根据FREE一个key的cost是否大于64，用于判断是否进行lazy free调用
+int dbAsyncDelete(redisDb *db, robj *key) {
+ /* Deleting an entry from the expires dict will not free the sds of
+ * the key, because it is shared with the main dictionary. */
+ if (dictSize(db->expires) > 0) dictDelete(db->expires,key->ptr); //从expires中直接删除key
+
+ dictEntry *de = dictUnlink(db->dict,key->ptr); //进行unlink处理，但不进行实际free操作
+ if (de) {
+ robj *val = dictGetVal(de);
+ size_t free_effort = lazyfreeGetFreeEffort(val); //评估free当前key的代价
+
+ /* If releasing the object is too much work, let's put it into the
+ * lazy free list. */
+ if (free_effort > LAZYFREE_THRESHOLD) { //如果free当前key cost>64, 则把它放在lazy free的list, 使用bio子线程进行实际free操作，不通过主线程运行
+ atomicIncr(lazyfree_objects,1); //待处理的lazyfree对象个数加1，通过info命令可查看
+ bioCreateBackgroundJob(BIO_LAZY_FREE,val,NULL,NULL); 
+ dictSetVal(db->dict,de,NULL);
+ }
+ }
+
+}
+```
+
+#### flushall/flushdb async命令
+
+当flushall/flushdb带上async,函数emptyDb()调用emptyDbAsync()来进行整个实例或DB的lazy free逻辑处理。
+emptyDbAsync处理逻辑如下：
+
+```c
+/* Empty a Redis DB asynchronously. What the function does actually is to
+ * create a new empty set of hash tables and scheduling the old ones for
+ * lazy freeing. */
+void emptyDbAsync(redisDb *db) {
+ dict *oldht1 = db->dict, *oldht2 = db->expires; //把db的两个hash tables暂存起来
+ db->dict = dictCreate(&dbDictType,NULL); //为db创建两个空的hash tables
+ db->expires = dictCreate(&keyptrDictType,NULL);
+ atomicIncr(lazyfree_objects,dictSize(oldht1)); //更新待处理lazyfree的键个数，加上db的key个数
+ bioCreateBackgroundJob(BIO_LAZY_FREE,NULL,oldht1,oldht2);//加入到bio list
+}
+```
+
+在bio中实际调用lazyfreeFreeDatabaseFromBioThread函数释放db
+
+```c
+void lazyfreeFreeDatabaseFromBioThread(dict *ht1, dict *ht2) {
+ size_t numkeys = dictSize(ht1);
+ dictRelease(ht1);
+ dictRelease(ht2);
+ atomicDecr(lazyfree_objects,numkeys);//完成整个DB的free,更新待处理lazyfree的键个数 
+}
+```
+
+#### 被动删除键使用lazy free
+
+被动删除4个场景，redis在每个场景调用时，都会判断对应的参数是否开启，如果参数开启，则调用以上对应的lazy free函数处理逻辑实现。
+
+### 总结
+
+因为Redis是单个主线程处理，antirez一直强调”Lazy Redis is better Redis”。而lazy free的本质就是把某些cost较高的(主要时间复制度，占用主线程cpu时间片)较高删除操作，从redis主线程剥离，让bio子线程来处理，极大地减少主线阻塞时间。从而减少删除导致性能和稳定性问题。
+
 ## 资料：
 
 - [删除数据后，redis为什么内存占用率还是很高？-极客时间](https://time.geekbang.org/column/article/289140)

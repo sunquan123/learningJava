@@ -427,14 +427,11 @@ public class CustomPartitioner implements Partitioner {
         // 可以在这里进行一些清理操作
     }
 }
-
-
 ```
 
 在partition()方法中，我们使用了一个简单的逻辑，根据键的哈希值将消息发送到相应的分区。为了在Kafka生产者中使用自定义的分区器，你需要在生产者的配置中指定分区器类：
 
 ```java
-
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 
@@ -548,13 +545,67 @@ NetworkClient 和 Selector 是两个重要的组件，分别负责网络通信�
 - request.required.acks = 0
   表示 Producer 不等待来自 Leader 的 ACK 确认，直接发送下一条消息。在这种情况下，如果 Leader 分片所在服务器发生宕机，那么这些已经发送的数据会丢失。 
 
--  request.required.acks = 1
+- request.required.acks = 1
   
   表示 Producer 等待来自 Leader 的 ACK 确认，当收到确认后才发送下一条消息。在这种情况下，消息一定会被写入到 Leader 服务器，但并不保证 Follow 节点已经同步完成。所以如果在消息已经被写入 Leader 分片，但是还未同步到 Follower 节点，此时Leader 分片所在服务器宕机了，那么这条消息也就丢失了，无法被消费到。
 
 - request.required.acks = -1
   
   Leader会把消息复制到集群中的所有ISR（In-Sync Replicas，同步副本），要等待所有ISR的ACK确认后，再向Producer发送ACK消息，然后Producer再继续发下一条消息。
+
+## kafka中partition和消费者对应关系
+
+kafka为了保证同一类型的消息顺序性（FIFO），**一个partition只能被同一组的一个consumer消费**，不同组的consumer可以消费同一个partition。但是一个consumer可以消费多个partition。
+
+### 消费者多于partition
+
+Topic： T1只有1个partition
+
+Group: G1组中启动2个consumer
+
+消费者数量为2大于partition数量1，此时partition和消费者进程对应关系如下：
+
+![](./pic/kafka/kafka-7.png)
+
+只有C1能接收到消息，C2则不能接收到消息，即同一个partition内的消息只能被同一个组中的一个consumer消费。当消费者数量多于partition的数量时，多余的消费者空闲。
+
+也就是说如果只有一个partition你在同一组启动多少个consumer都没用，partition的数量决定了此topic在同一组中被可被均衡的程度，例如partition=4，则可在同一组中被最多4个consumer均衡消费。
+
+### 消费者少于partition
+
+Topic：T2包含3个partition
+
+Group: G2组中启动2个consumer
+
+消费者数量为2小于partition数量3，此时partition和消费者进程对应关系如下：
+
+![](./pic/kafka/kafka-8.png)
+
+此时P1、P2对应C1，即多个partition对应一个消费者，C1接收到消息量是C2的两倍
+
+### 消费者等于partition
+
+Topic：T3包含3个partition
+
+Group: G3组中启动3个consumer
+
+消费者数量为3等于partition数量3，此时partition和消费者进程对应关系如下：
+
+![](./pic/kafka/kafka-9.png)
+
+C1，C2，C3均分了T3的所有消息，即消息在同一个组之间的消费者之间均分了。
+
+### 多个消费者组
+
+Topic：T3包含3个partition
+
+Group: G3组中启动3个consumer，G4组中启动1个consumer
+
+此时partition和消费者进程对应关系如下：
+
+![](./pic/kafka/kafka-10.png)
+
+消息被G3组的消费者均分，G4组的消费者在接收到了所有的消息。启动多个组，则会使同一个消息被消费多次。
 
 ## Kafka 高水位了解过吗？为什么 Kafka 需要 Leader Epoch？
 
@@ -629,5 +680,3 @@ ISR，是In-Sync Replicas，同步副本的意思。
 Kafka从0.9.x版本开始，引入了replica.lag.max.ms参数，表示如果某个Follower的LEO（latest end offset）一直落后Leader超过了10秒，那么才会被从ISR列表里移除。
 
 这样的话，即使出现瞬间流量，导致Follower落后很多数据，但是只要在限定的时间内尽快追上来就行了。
-
-

@@ -147,7 +147,7 @@ Kafka只对已提交的消息做最大限度的持久化保证不丢失，但是
 
 我们通常使用Kafka发送消息的时候，通常使用的producer.send(msg)其实是一种异步发送，发送消息的时候，方法会立即返回，但是并不代表消息一定能发送成功。（producer.send(msg).get() 是同步等待返回的。）
 
-那么，为了保证消息不丢失，通常会建议使用producer.send(msg, callback)方法，这个方法支持传入一个callback，我们可以在消息发送时进行重试。
+那么，为了保证消息不丢失，通常会建议使用producer.send(msg, callback)方法，这个方法支持传入一个callback，我们可以在消息发送失败时进行重试。
 
 同时，我们也可以通过给producer设置一些参数来提升发送成功率：
 
@@ -257,6 +257,8 @@ Kafka消息只消费一次，这个需要从多方面回答，既包含Kafka自�
 
 At-least-once消费语义意味着消费者至少消费一次消息，但可能会重复消费同一消息。在At-least-once语义中，当消费者从Kafka服务器读取消息时，消息的偏移量会被记录下来。一旦消息被成功处理，消费者会将位移提交回Kafka服务器。如果消息处理失败，消费者不会提交位移。这意味着该消息将在下一次重试时再次被消费。
 
+在生产者端，如果生产者发送消息给kafka后，kafka在未回复ACK前宕机了，生产者会重试，重试时如果kafka主节点上线了，此时将会得到两条相同的消息。此即为重复生产消息。
+
 At-least-once语义通常用于实时数据处理或消费者不能容忍数据丢失的场景，例如金融交易或电信信令。
 
 ### Exactly-once消费语义
@@ -268,6 +270,10 @@ Exactly-once消费语义意味着每个消息仅被消费一次，且不会被�
 在Kafka 0.11版本之前，实现Exactly-once语义需要一些特殊的配置和设置。但是，在Kafka 0.11版本之后，Kafka提供了原生的Exactly-once支持，使得实现Exactly-once变得更加简单和可靠。
 
 总之，At-least-once消费语义保证了数据的可靠性，但可能会导致数据重复消费。而Exactly-once消费语义则解决了重复问题，但需要更复杂的设置和配置。选择哪种消费语义取决于业务需求和数据可靠性要求。
+
+### At-most-once消费语义
+
+如果生产者在发送消息时，kafka主节点ACK超时或返回错误，此时生产者不重试，则可能导致消息最终不会写入kafka，因此不会传递给消费者。
 
 ## 什么是Kafka的重平衡机制？
 
@@ -427,14 +433,11 @@ public class CustomPartitioner implements Partitioner {
         // 可以在这里进行一些清理操作
     }
 }
-
-
 ```
 
 在partition()方法中，我们使用了一个简单的逻辑，根据键的哈希值将消息发送到相应的分区。为了在Kafka生产者中使用自定义的分区器，你需要在生产者的配置中指定分区器类：
 
 ```java
-
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 
@@ -548,7 +551,7 @@ NetworkClient 和 Selector 是两个重要的组件，分别负责网络通信�
 - request.required.acks = 0
   表示 Producer 不等待来自 Leader 的 ACK 确认，直接发送下一条消息。在这种情况下，如果 Leader 分片所在服务器发生宕机，那么这些已经发送的数据会丢失。 
 
--  request.required.acks = 1
+- request.required.acks = 1
   
   表示 Producer 等待来自 Leader 的 ACK 确认，当收到确认后才发送下一条消息。在这种情况下，消息一定会被写入到 Leader 服务器，但并不保证 Follow 节点已经同步完成。所以如果在消息已经被写入 Leader 分片，但是还未同步到 Follower 节点，此时Leader 分片所在服务器宕机了，那么这条消息也就丢失了，无法被消费到。
 
@@ -629,5 +632,3 @@ ISR，是In-Sync Replicas，同步副本的意思。
 Kafka从0.9.x版本开始，引入了replica.lag.max.ms参数，表示如果某个Follower的LEO（latest end offset）一直落后Leader超过了10秒，那么才会被从ISR列表里移除。
 
 这样的话，即使出现瞬间流量，导致Follower落后很多数据，但是只要在限定的时间内尽快追上来就行了。
-
-

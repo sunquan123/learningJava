@@ -559,6 +559,60 @@ NetworkClient 和 Selector 是两个重要的组件，分别负责网络通信�
   
   Leader会把消息复制到集群中的所有ISR（In-Sync Replicas，同步副本），要等待所有ISR的ACK确认后，再向Producer发送ACK消息，然后Producer再继续发下一条消息。
 
+## kafka中partition和消费者对应关系
+
+kafka为了保证同一类型的消息顺序性（FIFO），**一个partition只能被同一组的一个consumer消费**，不同组的consumer可以消费同一个partition。但是一个consumer可以消费多个partition。
+
+### 消费者多于partition
+
+Topic： T1只有1个partition
+
+Group: G1组中启动2个consumer
+
+消费者数量为2大于partition数量1，此时partition和消费者进程对应关系如下：
+
+![](./pic/kafka/kafka-7.png)
+
+只有C1能接收到消息，C2则不能接收到消息，即同一个partition内的消息只能被同一个组中的一个consumer消费。当消费者数量多于partition的数量时，多余的消费者空闲。
+
+也就是说如果只有一个partition你在同一组启动多少个consumer都没用，partition的数量决定了此topic在同一组中被可被均衡的程度，例如partition=4，则可在同一组中被最多4个consumer均衡消费。
+
+### 消费者少于partition
+
+Topic：T2包含3个partition
+
+Group: G2组中启动2个consumer
+
+消费者数量为2小于partition数量3，此时partition和消费者进程对应关系如下：
+
+![](./pic/kafka/kafka-8.png)
+
+此时P1、P2对应C1，即多个partition对应一个消费者，C1接收到消息量是C2的两倍
+
+### 消费者等于partition
+
+Topic：T3包含3个partition
+
+Group: G3组中启动3个consumer
+
+消费者数量为3等于partition数量3，此时partition和消费者进程对应关系如下：
+
+![](./pic/kafka/kafka-9.png)
+
+C1，C2，C3均分了T3的所有消息，即消息在同一个组之间的消费者之间均分了。
+
+### 多个消费者组
+
+Topic：T3包含3个partition
+
+Group: G3组中启动3个consumer，G4组中启动1个consumer
+
+此时partition和消费者进程对应关系如下：
+
+![](./pic/kafka/kafka-10.png)
+
+消息被G3组的消费者均分，G4组的消费者在接收到了所有的消息。启动多个组，则会使同一个消息被消费多次。
+
 ## Kafka 高水位了解过吗？为什么 Kafka 需要 Leader Epoch？
 
 高水位（HW，High Watermark）是Kafka中的一个重要的概念，主要是用于管理消费者的进度和保证数据的可靠性的。

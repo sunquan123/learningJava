@@ -147,7 +147,7 @@ Kafka只对已提交的消息做最大限度的持久化保证不丢失，但是
 
 我们通常使用Kafka发送消息的时候，通常使用的producer.send(msg)其实是一种异步发送，发送消息的时候，方法会立即返回，但是并不代表消息一定能发送成功。（producer.send(msg).get() 是同步等待返回的。）
 
-那么，为了保证消息不丢失，通常会建议使用producer.send(msg, callback)方法，这个方法支持传入一个callback，我们可以在消息发送失败时进行重试。
+那么，为了保证消息不丢失，通常会建议使用producer.send(msg, callback)方法，这个方法支持传入一个callback回调函数，我们可以在消息发送失败时进行重试。
 
 同时，我们也可以通过给producer设置一些参数来提升发送成功率：
 
@@ -171,11 +171,18 @@ Kafka的集群有一些机制来保证消息的不丢失，比如复制机制、
 
 在服务端，也有一些参数配置可以调节来避免消息丢失：
 
-```java
-replication.factor //表示分区副本的个数，replication.factor >1 当leader 副本挂了，follower副本会被选举为leader继续提供服务。
-min.insync.replicas //表示 ISR 最少的副本数量，通常设置 min.insync.replicas >1，这样才有可用的follower副本执行替换，保证消息不丢失
-unclean.leader.election.enable = false //是否可以把非 ISR 集合中的副本选举为 leader 副本。
-```
+1. `replication.factor`
+   
+   表示分区副本的个数，为了保证 leader 副本能有 follower 副本能同步消息，我们一般会为 topic 设置 replication.factor >= 3。这样就可以保证每个分区(partition)至少有 3 个副本。虽然造成了数据冗余，但是带来了数据的安全性。
+
+2. `min.insync.replicas`
+   
+   表示 ISR 最少的副本数量，一般情况下我们还需要设置min.insync.replicas> 1，这样配置代表消息至少要被写入到 2 个副本才算是被成功发送。min.insync.replicas的默认值为 1 ，在实际生产中应尽量避免默认值 1。但是，为了保证整个 Kafka 服务的高可用性，你需要确保replication.factor > min.insync.replicas。为什么呢？设想一下假如两者相等的话，只要是有一个副本挂掉，整个分区就无法正常工作了。这明显违反高可用性！一般推荐设置成replication.factor = min.insync.replicas + 1。
+
+3. `unclean.leader.election.enable = false`
+   
+   我们最开始也说了我们发送的消息会被发送到 leader 副本，然后 follower 副本才能从 leader 副本中拉取消息进行同步。多个 follower 副本之间的消息同步情况不一样，
+   当我们配置了unclean.leader.election.enable = false的话，当 leader 副本发生故障时就不会从 follower 副本中和 leader 同步程度达不到要求的副本中选择出 leader ，这样降低了消息丢失的可能性。
 
 ### Consumer
 
@@ -190,6 +197,14 @@ Kafka消费者会跟踪每个分区的偏移量，消费者每次消费消息时
 ```java
 enable.auto.commit=false
 ```
+
+但是手动提交偏移量的方式会带来这个问题：
+
+1. 消费者刚刚消费完消息，准备手动提交偏移量；
+
+2. 消费者挂了，此时kafka中此偏移量未提交，则对应消息会被其他消费者消费。
+
+3. 最终消息被消费了两次。
 
 ## 为什么Kafka没办法100%保证消息不丢失？
 
@@ -244,6 +259,12 @@ Kafka消息只消费一次，这个需要从多方面回答，既包含Kafka自�
 首先，在Kafka中，每个消费者都必须加入至少一个消费者组。同一个消费者组内的消费者可以共享消费者的负载。因此，如果一个消息被消费组中的任何一个消费者消费了，那么其他消费者就不会再收到这个消息了。
 
 另外，消费者可以通过手动提交消费位移来控制消息的消费情况。通过手动提交位移，消费者可以跟踪自己已经消费的消息，确保不会重复消费同一消息。
+
+什么时候提交比较合适呢？
+
+1. 处理完消息再手动提交。此时仍然可能出现重复消费的问题。
+
+2. 拉取到消息就手动提交。这样可能导致消息丢失消费。允许消息延时的场景下可以使用，一般要配合定时任务在业务不繁忙时做数据兜底。
 
 还有就是客户端自己可以做一些幂等机制，防止消息的重复消费。
 
@@ -336,6 +357,8 @@ Kafka的消息是存储在指定的topic中的某个partition中的。并且一�
 1. 在一个topic中，只创建一个partition，这样这个topic下的消息都会按照顺序保存在同一个partition中，这就保证了消息的顺序消费。
 
 2. 发送消息的时候指定partition，如果一个topic下有多个partition，那么我们可以把需要保证顺序的消息都发送到同一个partition中，这样也能做到顺序消费。
+
+3. 发送消息时指定key，kafka将根据key计算一次hash值，根据hash值得到分区编号。因此指定key也可以将相同key的消息存入同一个partition中。
 
 ### 如何发到同一个partition
 
@@ -686,3 +709,26 @@ ISR，是In-Sync Replicas，同步副本的意思。
 Kafka从0.9.x版本开始，引入了replica.lag.max.ms参数，表示如果某个Follower的LEO（latest end offset）一直落后Leader超过了10秒，那么才会被从ISR列表里移除。
 
 这样的话，即使出现瞬间流量，导致Follower落后很多数据，但是只要在限定的时间内尽快追上来就行了。
+
+## Zookeeper 在 Kafka 中的作用是什么？
+
+> 要想搞懂 zookeeper 在 Kafka 中的作用 一定要自己搭建一个 Kafka 环境然后自己进 zookeeper 去看一下有哪些文件夹和 Kafka 有关，每个节点又保存了什么信息。 一定不要光看不实践，这样学来的也终会忘记！这部分内容参考和借鉴了这篇文章：[Zookeeper 在 Kafka 中的作用 - 简书](https://www.jianshu.com/p/a036405f989c) 。
+
+下图就是我的本地 Zookeeper ，它成功和我本地的 Kafka 关联上（以下文件夹结构借助 idea 插件 Zookeeper tool 实现）。
+
+![](./pic/kafka/zookeeper-kafka.jpg)
+
+ZooKeeper 主要为 Kafka 提供元数据的管理的功能。
+
+从图中我们可以看出，Zookeeper 主要为 Kafka 做了下面这些事情：
+
+1. **Broker 注册**：在 Zookeeper 上会有一个专门**用来进行 Broker 服务器列表记录**的节点。每个 Broker 在启动时，都会到 Zookeeper 上进行注册，即到 `/brokers/ids` 下创建属于自己的节点。每个 Broker 就会将自己的 IP 地址和端口等信息记录到该节点中去
+2. **Topic 注册**：在 Kafka 中，同一个**Topic 的消息会被分成多个分区**并将其分布在多个 Broker 上，**这些分区信息及与 Broker 的对应关系**也都是由 Zookeeper 在维护。比如我创建了一个名字为 my-topic 的主题并且它有两个分区，对应到 zookeeper 中会创建这些文件夹：`/brokers/topics/my-topic/Partitions/0`、`/brokers/topics/my-topic/Partitions/1`
+3. **负载均衡**：上面也说过了 Kafka 通过给特定 Topic 指定多个 Partition, 而各个 Partition 可以分布在不同的 Broker 上, 这样便能提供比较好的并发能力。 对于同一个 Topic 的不同 Partition，Kafka 会尽力将这些 Partition 分布到不同的 Broker 服务器上。当生产者产生消息后也会尽量投递到不同 Broker 的 Partition 里面。当 Consumer 消费的时候，Zookeeper 可以根据当前的 Partition 数量以及 Consumer 数量来实现动态负载均衡。
+4. ……
+
+### 使用 Kafka 能否不引入 Zookeeper?
+
+在 Kafka 2.8 之前，Kafka 最被大家诟病的就是其重度依赖于 Zookeeper。在 Kafka 2.8 之后，引入了基于 Raft 协议的 KRaft 模式，不再依赖 Zookeeper，大大简化了 Kafka 的架构，让你可以以一种轻量级的方式来使用 Kafka。
+
+不过，要提示一下：如果要使用 KRaft 模式的话，建议选择较高版本的 Kafka，因为这个功能还在持续完善优化中。Kafka 3.3.1 版本是第一个将 KRaft（Kafka Raft）共识协议标记为生产就绪的版本。

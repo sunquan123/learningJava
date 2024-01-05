@@ -1757,6 +1757,328 @@ Write Through模式下，缓存配置一个写模块，它知道如何将数据�
 
 这种比较适合用在比如统计文章的访问量、点赞等场景中，允许数据少量丢失，但是速度要快。
 
+## Redisson的watch dog机制是怎么样的？
+
+为了避免Redis实现的分布式锁超时，Redisson中引入了watch dog的机制，他可以帮助我们在Redisson实例被关闭前，不断的延长锁的有效期。
+
+那么，它是如何实现的呢？  
+
+在Redisson中，watch dog的主要实现在[scheduleExpirationRenewal](https://github.com/redisson/redisson/blob/master/redisson/src/main/java/org/redisson/RedissonBaseLock.java#L155)方法中：
+
+```java
+protected void scheduleExpirationRenewal(long threadId) {
+    ExpirationEntry entry = new ExpirationEntry();
+    ExpirationEntry oldEntry = EXPIRATION_RENEWAL_MAP.putIfAbsent(getEntryName(), entry);
+    if (oldEntry != null) {
+        oldEntry.addThreadId(threadId);
+    } else {
+        entry.addThreadId(threadId);
+        try {
+            renewExpiration();
+        } finally {
+            if (Thread.currentThread().isInterrupted()) {
+                cancelExpirationRenewal(threadId);
+            }
+        }
+    }
+}
+
+//定时任务执行续期
+private void renewExpiration() {
+    ExpirationEntry ee = EXPIRATION_RENEWAL_MAP.get(getEntryName());
+    if (ee == null) {
+        return;
+    }
+
+    Timeout task = getServiceManager().newTimeout(new TimerTask() {
+        @Override
+        public void run(Timeout timeout) throws Exception {
+            ExpirationEntry ent = EXPIRATION_RENEWAL_MAP.get(getEntryName());
+            if (ent == null) {
+                return;
+            }
+            Long threadId = ent.getFirstThreadId();
+            if (threadId == null) {
+                return;
+            }
+
+            CompletionStage<Boolean> future = renewExpirationAsync(threadId);
+            future.whenComplete((res, e) -> {
+                if (e != null) {
+                    log.error("Can't update lock {} expiration", getRawName(), e);
+                    EXPIRATION_RENEWAL_MAP.remove(getEntryName());
+                    return;
+                }
+
+                if (res) {
+                    // reschedule itself
+                    renewExpiration();
+                } else {
+                    cancelExpirationRenewal(null);
+                }
+            });
+        }
+    }, internalLockLeaseTime / 3, TimeUnit.MILLISECONDS);
+
+    ee.setTimeout(task);
+}
+
+
+//使用LUA脚本，进行续期
+protected CompletionStage<Boolean> renewExpirationAsync(long threadId) {
+    return evalWriteAsync(getRawName(), LongCodec.INSTANCE, RedisCommands.EVAL_BOOLEAN,
+            "if (redis.call('hexists', KEYS[1], ARGV[2]) == 1) then " +
+                    "redis.call('pexpire', KEYS[1], ARGV[1]); " +
+                    "return 1; " +
+                    "end; " +
+                    "return 0;",
+            Collections.singletonList(getRawName()),
+            internalLockLeaseTime, getLockName(threadId));
+}
+```
+
+可以看到，上面的代码的主要逻辑就是用了一个TimerTask来实现了一个定时任务，设置了internalLockLeaseTime / 3的时长进行一次锁续期。默认的超时时长是30s，那么他会每10s进行一次续期，通过LUA脚本进行续期，再续30s
+
+不过，这个续期也不是无脑续，他也是有条件的，其中ExpirationEntry ent = EXPIRATION_RENEWAL_MAP.get(getEntryName());这个值得我们关注，他会从EXPIRATION_RENEWAL_MAP中尝试获取一个KV对，如果查不到，就不续期了。
+
+EXPIRATION_RENEWAL_MAP这个东西，会在unlock的时候操作的，对他进行remove，所以一个锁如果被解了，那么就不会再继续续期了：
+
+```java
+@Override
+public void unlock() {
+    try {
+        get(unlockAsync(Thread.currentThread().getId()));
+    } catch (RedisException e) {
+        if (e.getCause() instanceof IllegalMonitorStateException) {
+            throw (IllegalMonitorStateException) e.getCause();
+        } else {
+            throw e;
+        }
+    }
+}
+
+@Override
+public RFuture<Void> unlockAsync(long threadId) {
+    return getServiceManager().execute(() -> unlockAsync0(threadId));
+}
+
+private RFuture<Void> unlockAsync0(long threadId) {
+    CompletionStage<Boolean> future = unlockInnerAsync(threadId);
+    CompletionStage<Void> f = future.handle((opStatus, e) -> {
+        cancelExpirationRenewal(threadId);
+
+        if (e != null) {
+            if (e instanceof CompletionException) {
+                throw (CompletionException) e;
+            }
+            throw new CompletionException(e);
+        }
+        if (opStatus == null) {
+            IllegalMonitorStateException cause = new IllegalMonitorStateException("attempt to unlock lock, not locked by current thread by node id: "
+                    + id + " thread-id: " + threadId);
+            throw new CompletionException(cause);
+        }
+
+        return null;
+    });
+
+    return new CompletableFutureWrapper<>(f);
+}
+
+protected void cancelExpirationRenewal(Long threadId) {
+    ExpirationEntry task = EXPIRATION_RENEWAL_MAP.get(getEntryName());
+    if (task == null) {
+        return;
+    }
+
+    if (threadId != null) {
+        task.removeThreadId(threadId);
+    }
+
+    if (threadId == null || task.hasNoThreads()) {
+        Timeout timeout = task.getTimeout();
+        if (timeout != null) {
+            timeout.cancel();
+        }
+        EXPIRATION_RENEWAL_MAP.remove(getEntryName());
+    }
+}
+```
+
+以上代码，第4行->16行->22行->57行。就是一次unlock过程中，对EXPIRATION_RENEWAL_MAP进行移除，进而取消下一次锁续期的实现细节。  
+
+并且在unlockAsync方法中，不管unlockInnerAsync是否执行成功，还是抛了异常，都不影响cancelExpirationRenewal的执行，也可以理解为，只要unlock方法被调用了，即使解锁未成功，那么也可以停止下一次的锁续期。
+
+### 什么情况会进行续期
+
+当我们使用Redisson创建一个分布式锁的时候，并不是所有情况都会续期的，我们可以看下以下加锁过程的代码实现：
+
+```java
+private RFuture<Long> tryAcquireAsync(long waitTime, long leaseTime, TimeUnit unit, long threadId) {
+    RFuture<Long> ttlRemainingFuture;
+    if (leaseTime > 0) {
+        ttlRemainingFuture = tryLockInnerAsync(waitTime, leaseTime, unit, threadId, RedisCommands.EVAL_LONG);
+    } else {
+        ttlRemainingFuture = tryLockInnerAsync(waitTime, internalLockLeaseTime,
+                TimeUnit.MILLISECONDS, threadId, RedisCommands.EVAL_LONG);
+    }
+    CompletionStage<Long> s = handleNoSync(threadId, ttlRemainingFuture);
+    ttlRemainingFuture = new CompletableFutureWrapper<>(s);
+
+    CompletionStage<Long> f = ttlRemainingFuture.thenApply(ttlRemaining -> {
+        // lock acquired
+        if (ttlRemaining == null) {
+            if (leaseTime > 0) {
+                internalLockLeaseTime = unit.toMillis(leaseTime);
+            } else {
+                scheduleExpirationRenewal(threadId);
+            }
+        }
+        return ttlRemaining;
+    });
+    return new CompletableFutureWrapper<>(f);
+}
+```
+
+注意看第15-19行，只有当leaseTime <= 0的时候，Redisson才会进行续期，所以，当我们加锁时，如果指定了超时时间，那么是不会被续期的。
+
+### 什么情况会停止续期
+
+首先，就是我们上面讲过的那种，如果一个锁的unlock方法被调用了，那么就会停止续期。
+
+那么，取消续期的核心代码如下：
+
+```java
+protected void cancelExpirationRenewal(Long threadId) {
+    ExpirationEntry task = EXPIRATION_RENEWAL_MAP.get(getEntryName());
+    if (task == null) {
+        return;
+    }
+
+    if (threadId != null) {
+        task.removeThreadId(threadId);
+    }
+
+    if (threadId == null || task.hasNoThreads()) {
+        Timeout timeout = task.getTimeout();
+        if (timeout != null) {
+            timeout.cancel();
+        }
+        EXPIRATION_RENEWAL_MAP.remove(getEntryName());
+    }
+}
+```
+
+主要就是通过EXPIRATION_RENEWAL_MAP.remove来做的。那么cancelExpirationRenewal还有下面一处调用：
+
+```java
+protected void scheduleExpirationRenewal(long threadId) {
+    ExpirationEntry entry = new ExpirationEntry();
+    ExpirationEntry oldEntry = EXPIRATION_RENEWAL_MAP.putIfAbsent(getEntryName(), entry);
+    if (oldEntry != null) {
+        oldEntry.addThreadId(threadId);
+    } else {
+        entry.addThreadId(threadId);
+        try {
+            renewExpiration();
+        } finally {
+            if (Thread.currentThread().isInterrupted()) {
+                cancelExpirationRenewal(threadId);
+            }
+        }
+    }
+}
+```
+
+也就是说，在尝试开启续期的过程中，如果线程被中断了，那么就会取消续期动作了。
+
+目前，Redisson是没有针对最大续期次数和最大续期时间的支持的。所以，正常情况下，如果没有解锁，是会一直续期下去的。
+
+但是需要注意的是，Redisson的续期是Netty的时间轮（TimerTask、Timeout、Timer）的，并且操作都是基于JVM的，所以，当应用宕机、下线或者重启后，续期任务就没有了。这样也能在一定程度上避免机器挂了但是锁一直不释放导致的死锁问题。
+
+## 如何基于Redisson实现一个延迟队列
+
+Redisson中定义了分布式延迟队列RDelayedQueue，这是一种基于我们前面介绍过的zset结构实现的延时队列，它允许以指定的延迟时长将元素放到目标队列中。
+
+其实就是在zset的基础上增加了一个基于内存的延迟队列。当我们要添加一个数据到延迟队列的时候，redisson会把数据+超时时间放到zset中，并且起一个延时任务，当任务到期的时候，再去zset中把数据取出来，返回给客户端使用。
+
+```java
+<dependency>
+    <groupId>org.redisson</groupId>
+    <artifactId>redisson</artifactId>
+    <version>最新版</version> 
+</dependency>
+```
+
+定义一个Redisson客户端：
+
+```java
+/**
+ * @author Sun
+ */
+@Configuration
+public class RedissonConfig {
+
+    @Bean(destroyMethod="shutdown")
+    public RedissonClient redisson() throws IOException {
+        Config config = new Config();
+        config.useSingleServer().setAddress("redis://127.0.0.1:6379");
+        RedissonClient redisson = Redisson.create(config);
+        return redisson;
+    }
+}
+```
+
+接下来，在想要使用延迟队列的地方做如下方式：
+
+```java
+import org.redisson.api.RBlockingDeque;
+import org.redisson.api.RDelayedQueue;
+import org.redisson.api.RedissonClient;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.concurrent.TimeUnit;
+
+@Component
+public class RedissonOrderDelayQueue {
+
+
+
+    @Autowired
+    RedissonClient redisson;
+
+    public void addTaskToDelayQueue(String orderId) {
+
+        RBlockingDeque<String> blockingDeque = redisson.getBlockingDeque("orderQueue");
+        RDelayedQueue<String> delayedQueue = redisson.getDelayedQueue(blockingDeque);
+
+        System.out.println(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")) + "添加任务到延时队列里面");
+        delayedQueue.offer(orderId, 3, TimeUnit.SECONDS);
+        delayedQueue.offer(orderId, 6, TimeUnit.SECONDS);
+        delayedQueue.offer(orderId, 9, TimeUnit.SECONDS);
+    }
+
+
+   public String getOrderFromDelayQueue() {
+        RBlockingDeque<String> blockingDeque = redisson.getBlockingDeque("orderQueue");
+        RDelayedQueue<String> delayedQueue = redisson.getDelayedQueue(blockingDeque);
+        String orderId = blockingDeque.take();
+        return orderId;
+    }
+
+}
+```
+
+使用offer方法将两条延迟消息添加到RDelayedQueue中，使用take方法从RQueue中获取消息，如果没有消息可用，该方法会阻塞等待，直到消息到达。
+
+我们使用 RDelayedQueue 的 offer 方法将元素添加到延迟队列，并指定延迟的时间。当元素的延迟时间到达时，Redisson 会将元素从 RDelayedQueue 转移到关联的 RBlockingDeque 中。
+
+使用 RBlockingDeque 的 take 方法从关联的 RBlockingDeque 中获取元素。这是一个阻塞操作，如果没有元素可用，它会等待直到有元素可用。
+
+所以，为了从延迟队列中取出元素，使用 RBlockingDeque 的 take 方法，因为 Redisson 的 RDelayedQueue 实际上是通过转移元素到关联的 RBlockingDeque 来实现延迟队列的。
+
 ## 如何解决单个key百万并发请求Redis扛不住的问题？
 
 Redis即使是集群，单个key也是只能存储在单个Redis节点上，如果遇到单个key可能瞬间百万并发的情况，Redis节点也只能扛住10万。

@@ -1460,7 +1460,7 @@ unsafe提供cas功能，AtomicInteger等原子类也是调用对应的方法，�
 
 ### Java异常体系
 
-![6479D7BB01736CCC61B8270D41F00B17.png](.\pic\6479D7BB01736CCC61B8270D41F00B17.png)
+![6479D7BB01736CCC61B8270D41F00B17.png](.\pic\java\6479D7BB01736CCC61B8270D41F00B17.png)
 
 #### 什么是Throwable
 
@@ -1864,7 +1864,7 @@ JDK1.8中的数据覆盖
 
 `LinkedHashMap` 是 Java 集合框架中 `HashMap` 的一个子类，它继承了 `HashMap` 的所有属性和方法，并且在 `HashMap` 的基础重写了 `afterNodeRemoval`、`afterNodeInsertion`、`afterNodeAccess` 方法。使之拥有顺序插入和访问有序的特性。它在底层增加了双向链表保证插入顺序，相对于hashmap插入性能有所下降，查询性能有所提升，适用于需要保证插入顺序的场景。
 
-![LinkedHashMap 逻辑结构](./pic/linkhashmap-structure-overview.png)
+![LinkedHashMap 逻辑结构](./pic/java/linkhashmap-structure-overview.png)
 
 #### LinkedHashMap 如何按照访问顺序迭代元素？
 
@@ -1935,7 +1935,7 @@ four
 
 **JDK1.7 的 ConcurrentHashMap**：
 
-![](./pic/java7_concurrenthashmap.png)
+![](./pic/java/java7_concurrenthashmap.png)
 
 `ConcurrentHashMap` 是由 `Segment` 数组结构和 `HashEntry` 数组结构组成。
 
@@ -1954,7 +1954,7 @@ static class Segment<K,V> extends ReentrantLock implements Serializable {
 
 **JDK1.8 的 ConcurrentHashMap**：
 
-![](./pic/java8_concurrenthashmap.png)
+![](./pic/java/java8_concurrenthashmap.png)
 
 JDK1.8 的 `ConcurrentHashMap` 不再是 **Segment 数组 + HashEntry 数组 + 链表**，而是 **Node 数组 + 链表 / 红黑树**。不过，Node 只能用于链表的情况，红黑树的情况需要使用 **`TreeNode`**。ConcurrentHashMap的链表转红黑树的判断条件也是和hashmap类似：只有数组长度大于64，且链表长度大于8才会开始树化。
 

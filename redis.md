@@ -2171,7 +2171,9 @@ IO多路复用在Linux下包括了三种，select、poll、epoll，抽象来看�
 
 ![](./pic/redis/io-3.jpg)
 
-一旦有请求到达，就会交给 Redis 线程处理，这就实现了一个 Redis 线程处理多个 IO 流的效果。  
+一旦有请求到达，就会交给 Redis 线程处理，这就实现了一个 Redis 线程处理多个 IO 流的效果。
+
+Redis底层关于epoll的源码实现在redis的src源码目录的ae_epoll.c文件里，典型的epoll的NIO线程模型(nginx也是)就是由epoll实例收集所有事件(连接与读写事件)，由一个服务端线程连续处理所有事件命令。
 
 所以，Redis选择使用多路复用IO技术来提升I/O利用率。  
 

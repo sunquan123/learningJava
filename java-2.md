@@ -171,7 +171,7 @@ I/O 多路复用模型中，线程首先发起 select 调用，询问内核查�
 
 IO 多路复用模型，相对于阻塞I/O模型，似乎不显出什么优势，但是当select调用查询多个套接字时，将比单个调用的BIO方便不少，系统性能也会得到提升，cpu资源消耗相对更小。
 
-Java 中的 NIO ，有一个非常重要的**选择器 ( Selector )** 的概念，也可以被称为 **多路复用器**。通过它，只需要一个线程便可以管理多个客户端连接。当客户端数据到了之后，才会为其服务。
+Java 中的 NIO ，有一个非常重要的**选择器 ( Selector )** 的概念，也可以被称为 **多路复用器**。通过它，只需要一个线程便可以管理多个客户端连接。当客户端数据到了之后，才会为其服务。Java借助操作系统的epoll事件轮询机制（win是select，mac是KQueue，linux是epoll）实现了多路复用技术。操作系统的epoll_create、epoll_ctl、epoll_wait函数对一个新建的epoll实例内监听的多个客户端连接的指定事件，只要一个客户端发生相应事件了，操作系统就会返回对应事件给Java应用程序进行处理。
 
 ![](./pic/java\javanio.png)
 
@@ -187,7 +187,90 @@ Java 中的 NIO ，有一个非常重要的**选择器 ( Selector )** 的概念�
 
 异步I/O模型是应用程序发起aio_read系统调用，内核检查数据未准备好，则直接返回。直到内核接收到数据且在内核缓冲区准备好数据，且内核按照约定将内核缓冲区的数据拷贝到应用程序内存中指定位置，此后内核会按照约定通知应用程序。此时应用程序可以开始处理数据。在此期间，应用程序未处于阻塞状态。这是真正的异步非阻塞IO。
 
-Java 7 中引入了 NIO 的改进版 NIO 2,它是异步 IO 模型。目前来说 AIO 的应用还不是很广泛。Netty 之前也尝试使用过 AIO，不过又放弃了。这是因为，Netty 使用了 AIO 之后，在 Linux 系统上的性能并没有多少提升。
+Java 7 中引入了 NIO 的改进版 NIO 2,它是异步 IO 模型。目前来说 AIO 的应用还不是很广泛。Netty 之前也尝试使用过 AIO，不过又放弃了。在Linux系统上，AIO的底层实现仍使用Epoll，没有很好实现AIO，因此在性能上没有明显的优势，而且被JDK封装了一层不容易深度优化，Linux上AIO还不够成熟。
+
+#### Java NIO
+
+NIO非阻塞代码示例：
+
+```java
+package com.tuling.nio;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+
+ public class NioServer {
+
+ // 保存客户端连接
+ static List<SocketChannel> channelList = new ArrayList<>();
+
+ public static void main(String[] args) throws IOException, InterruptedException {
+
+ // 创建NIO ServerSocketChannel,与BIO的serverSocket类似
+ ServerSocketChannel serverSocket = ServerSocketChannel.open();
+ serverSocket.socket().bind(new InetSocketAddress(9000));
+ // 设置ServerSocketChannel为非阻塞
+ serverSocket.configureBlocking(false);
+ System.out.println("服务启动成功");
+
+ while (true) {
+ // 非阻塞模式accept方法不会阻塞，否则会阻塞
+ // NIO的非阻塞是由操作系统内部实现的，底层调用了linux内核的accept函数
+ SocketChannel socketChannel = serverSocket.accept();
+ if (socketChannel != null) { // 如果有客户端进行连接
+ System.out.println("连接成功");
+ // 设置SocketChannel为非阻塞
+ socketChannel.configureBlocking(false);
+ // 保存客户端连接在List中
+ channelList.add(socketChannel);
+ }
+ // 遍历连接进行数据读取
+ Iterator<SocketChannel> iterator = channelList.iterator();
+ while (iterator.hasNext()) {
+ SocketChannel sc = iterator.next();
+ ByteBuffer byteBuffer = ByteBuffer.allocate(128);
+ // 非阻塞模式read方法不会阻塞，否则会阻塞
+ int len = sc.read(byteBuffer);
+ // 如果有数据，把数据打印出来
+ if (len > 0) {
+ System.out.println("接收到消息：" + new String(byteBuffer.array()));
+ } else if (len == ‐1) { // 如果客户端断开，把socket从集合中去掉
+ iterator.remove();
+ System.out.println("客户端断开连接");
+ }
+ }
+ }
+ }
+ }
+```
+
+总结：如果连接数太多的话，会有大量的无效遍历，假如有10000个连接，其中只有1000个连接有写数据，但是由于其他9000个连接并
+
+没有断开，我们还是要每次轮询遍历一万次，其中有十分之九的遍历都是无效的，这显然不是一个让人很满意的状态。
+
+NIO引入多路复用器代码示例：
+
+```java
+
+```
+
+NIO 有三大核心组件： Channel(通道)， Buffer(缓冲区)，Selector(多路复用器)
+
+1. channel 类似于流，每个 channel 对应一个 buffer缓冲区，buffer 底层就是个数组
+
+2. channel 会注册到 selector 上，由 selector 根据 channel 读写事件的发生将其交由某个空闲的线程处理
+
+3. NIO 的 Buffer 和 channel 都是既可以读也可以写
+
+NIO底层在JDK1.4版本是用linux的内核函数select()或poll()来实现，跟上面的NioServer代码类似，selector每次都会轮询所有的
+
+sockchannel看下哪个channel有读写事件，有的话就处理，没有就继续遍历，JDK1.5开始引入了epoll基于事件响应机制来优化NIO。
 
 ### 零拷贝
 

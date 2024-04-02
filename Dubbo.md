@@ -1,6 +1,6 @@
 # Dubbo
 
-## SPI机制
+## SPI机制讨论
 
 SPI 全称为 Service Provider Interface，是一种服务发现机制。SPI 的本质是将接口实现类的全限定名配置在文件中，并由服务加载器读取配置文件，加载实现类。这样可以在运行时，动态为接口替换实现类。正因此特性，我们可以很容易的通过 SPI 机制为我们的程序提供拓展功能。
 
@@ -210,122 +210,122 @@ Spring SPI机制使用了Java SPI的设计思路，我们只需要在 **META-IN
 Spring通过SpringFactoriesLoader的loadFactories方法加载实现类到Spring中。该方法会先获取类全路径名，再去生成类实例：
 
 ```java
-	public static <T> List<T> loadFactories(Class<T> factoryType, @Nullable ClassLoader classLoader) {
+    public static <T> List<T> loadFactories(Class<T> factoryType, @Nullable ClassLoader classLoader) {
         //断言，factoryType为空直接报错factoryType' must not be null
-		Assert.notNull(factoryType, "'factoryType' must not be null");
-		ClassLoader classLoaderToUse = classLoader;
+        Assert.notNull(factoryType, "'factoryType' must not be null");
+        ClassLoader classLoaderToUse = classLoader;
         //判断是否有类加载器，没有的话就使用SpringFactoriesLoader的
-		if (classLoaderToUse == null) {
-			classLoaderToUse = SpringFactoriesLoader.class.getClassLoader();
-		}
+        if (classLoaderToUse == null) {
+            classLoaderToUse = SpringFactoriesLoader.class.getClassLoader();
+        }
         //加载实现类全限定名，我们进去看下loadFactoryNames()实现，看它怎么加载的实现类全限定名
-		List<String> factoryImplementationNames = loadFactoryNames(factoryType, classLoaderToUse);
-		if (logger.isTraceEnabled()) {
-			logger.trace("Loaded [" + factoryType.getName() + "] names: " + factoryImplementationNames);
-		}
-		List<T> result = new ArrayList<>(factoryImplementationNames.size());
-		for (String factoryImplementationName : factoryImplementationNames) {
+        List<String> factoryImplementationNames = loadFactoryNames(factoryType, classLoaderToUse);
+        if (logger.isTraceEnabled()) {
+            logger.trace("Loaded [" + factoryType.getName() + "] names: " + factoryImplementationNames);
+        }
+        List<T> result = new ArrayList<>(factoryImplementationNames.size());
+        for (String factoryImplementationName : factoryImplementationNames) {
             /**
             * 重点关注instantiateFactory(factoryImplementationName, factoryType, classLoaderToUse)，这里面主要是通过反射实例化对象
             * 接下来我们探究一下它的源码
             *
             **/
-			result.add(instantiateFactory(factoryImplementationName, factoryType, classLoaderToUse));
-		}
-        
+            result.add(instantiateFactory(factoryImplementationName, factoryType, classLoaderToUse));
+        }
+
         //对结果进行排序
-		AnnotationAwareOrderComparator.sort(result);
-		return result;
-	}
+        AnnotationAwareOrderComparator.sort(result);
+        return result;
+    }
 ```
 
 loadFactoryNames方法通过调用loadSpringFactories方法获取类全路径名：
 
 ```java
-	public static List<String> loadFactoryNames(Class<?> factoryType, @Nullable ClassLoader classLoader) {
-		ClassLoader classLoaderToUse = classLoader;
+    public static List<String> loadFactoryNames(Class<?> factoryType, @Nullable ClassLoader classLoader) {
+        ClassLoader classLoaderToUse = classLoader;
         //判断是否有类加载器，没有的话就使用SpringFactoriesLoader的
-		if (classLoaderToUse == null) {
-			classLoaderToUse = SpringFactoriesLoader.class.getClassLoader();
-		}
+        if (classLoaderToUse == null) {
+            classLoaderToUse = SpringFactoriesLoader.class.getClassLoader();
+        }
         //获取接口全限定名
-		String factoryTypeName = factoryType.getName();
+        String factoryTypeName = factoryType.getName();
         //主要看loadSpringFactories(classLoaderToUse)方法，这里面是找到spring.factories的源码
-		return loadSpringFactories(classLoaderToUse).getOrDefault(factoryTypeName, Collections.emptyList());
-	}
+        return loadSpringFactories(classLoaderToUse).getOrDefault(factoryTypeName, Collections.emptyList());
+    }
 ```
 
 loadSpringFactories方法先从缓存中查找实现类名，如果找不到再从META-INF/spring.factories文件中读取接口对应的实现类全路径：
 
 ```java
-	private static Map<String, List<String>> loadSpringFactories(ClassLoader classLoader) {
+    private static Map<String, List<String>> loadSpringFactories(ClassLoader classLoader) {
         //先从缓存里面取，如果有数据直接返回，则继续往下执行（注意：key是classLoader）
-		Map<String, List<String>> result = cache.get(classLoader);
-		if (result != null) {
-			return result;
-		}
+        Map<String, List<String>> result = cache.get(classLoader);
+        if (result != null) {
+            return result;
+        }
 
-		result = new HashMap<>();
-		try {
+        result = new HashMap<>();
+        try {
             //根据路径获取所有资源，FACTORIES_RESOURCE_LOCATION = "META-INF/spring.factories"
-			Enumeration<URL> urls = classLoader.getResources(FACTORIES_RESOURCE_LOCATION);
-			while (urls.hasMoreElements()) {
-				URL url = urls.nextElement();
-				UrlResource resource = new UrlResource(url);
-                
-                //加载配置文件拿到实现类全限定名，为什么可以用Properties加载，因为配置是K V的
-				Properties properties = PropertiesLoaderUtils.loadProperties(resource);
-				for (Map.Entry<?, ?> entry : properties.entrySet()) {
-					String factoryTypeName = ((String) entry.getKey()).trim();
-                    //以逗号分隔的实现类全限定类名转成字符串数组
-					String[] factoryImplementationNames =
-							StringUtils.commaDelimitedListToStringArray((String) entry.getValue());
-					for (String factoryImplementationName : factoryImplementationNames) {
-						//重新计算key，不存在则添加，存在则直接返回
-						result.computeIfAbsent(factoryTypeName, key -> new ArrayList<>())
-								.add(factoryImplementationName.trim());
-					}
-				}
-			}
+            Enumeration<URL> urls = classLoader.getResources(FACTORIES_RESOURCE_LOCATION);
+            while (urls.hasMoreElements()) {
+                URL url = urls.nextElement();
+                UrlResource resource = new UrlResource(url);
 
-			//给结果去重
-			result.replaceAll((factoryType, implementations) -> implementations.stream().distinct()
-					.collect(Collectors.collectingAndThen(Collectors.toList(), Collections::unmodifiableList)));
-            
+                //加载配置文件拿到实现类全限定名，为什么可以用Properties加载，因为配置是K V的
+                Properties properties = PropertiesLoaderUtils.loadProperties(resource);
+                for (Map.Entry<?, ?> entry : properties.entrySet()) {
+                    String factoryTypeName = ((String) entry.getKey()).trim();
+                    //以逗号分隔的实现类全限定类名转成字符串数组
+                    String[] factoryImplementationNames =
+                            StringUtils.commaDelimitedListToStringArray((String) entry.getValue());
+                    for (String factoryImplementationName : factoryImplementationNames) {
+                        //重新计算key，不存在则添加，存在则直接返回
+                        result.computeIfAbsent(factoryTypeName, key -> new ArrayList<>())
+                                .add(factoryImplementationName.trim());
+                    }
+                }
+            }
+
+            //给结果去重
+            result.replaceAll((factoryType, implementations) -> implementations.stream().distinct()
+                    .collect(Collectors.collectingAndThen(Collectors.toList(), Collections::unmodifiableList)));
+
             //把结果添加到缓存里，classLoader作为key， 结果集作为value
-			cache.put(classLoader, result);
-		}
-		catch (IOException ex) {
-			throw new IllegalArgumentException("Unable to load factories from location [" +
-					FACTORIES_RESOURCE_LOCATION + "]", ex);
-		}
+            cache.put(classLoader, result);
+        }
+        catch (IOException ex) {
+            throw new IllegalArgumentException("Unable to load factories from location [" +
+                    FACTORIES_RESOURCE_LOCATION + "]", ex);
+        }
         //返回结果
-		return result;
-	}
+        return result;
+    }
 ```
 
 instantiateFactory方法通过反射生成类实例：
 
 ```java
-	private static <T> T instantiateFactory(String factoryImplementationName, Class<T> factoryType, ClassLoader classLoader) {
-		try {
+    private static <T> T instantiateFactory(String factoryImplementationName, Class<T> factoryType, ClassLoader classLoader) {
+        try {
             //通过ClassUtils.forName()加载Class对象
-			Class<?> factoryImplementationClass = ClassUtils.forName(factoryImplementationName, classLoader);
+            Class<?> factoryImplementationClass = ClassUtils.forName(factoryImplementationName, classLoader);
             //判断实现类是不是实现了标准接口
-			if (!factoryType.isAssignableFrom(factoryImplementationClass)) {
-				throw new IllegalArgumentException(
-						"Class [" + factoryImplementationName + "] is not assignable to factory type [" + factoryType.getName() + "]");
-			}
-            
+            if (!factoryType.isAssignableFrom(factoryImplementationClass)) {
+                throw new IllegalArgumentException(
+                        "Class [" + factoryImplementationName + "] is not assignable to factory type [" + factoryType.getName() + "]");
+            }
+
             //先获得构造器，然后再实例化对象
-			return (T) ReflectionUtils.accessibleConstructor(factoryImplementationClass).newInstance();
-		}
-		catch (Throwable ex) {
-			throw new IllegalArgumentException(
-				"Unable to instantiate factory class [" + factoryImplementationName + "] for factory type [" + factoryType.getName() + "]",
-				ex);
-		}
-	}
+            return (T) ReflectionUtils.accessibleConstructor(factoryImplementationClass).newInstance();
+        }
+        catch (Throwable ex) {
+            throw new IllegalArgumentException(
+                "Unable to instantiate factory class [" + factoryImplementationName + "] for factory type [" + factoryType.getName() + "]",
+                ex);
+        }
+    }
 ```
 
 到这里，我们就完成了Spring SPI机制的源码分析，相信读完大家都明白了这中间实现逻辑的简单。
@@ -339,30 +339,63 @@ Spring SPI机制和Java SPI机制相比，在编程范式上并没有提升，�
 Dubbo 也并未使用 Java SPI，而是重新实现了一套功能更强更灵活的 SPI 机制。Dubbo SPI 的相关逻辑被封装在了 ExtensionLoader 类中，通过 ExtensionLoader，我们可以加载指定的实现类。Dubbo SPI 所需的配置文件需放置在 META-INF/dubbo 路径下，配置内容如下：
 
 ```properties
-dog=com.sunnick.animal.impl.Dog
-cat=com.sunnick.animal.impl.Cat
+First = org.example.JavaWorld.ServiceProviderDubbo.spi.FirstLoggerServiceImpl
+Second = org.example.JavaWorld.ServiceProviderDubbo.spi.SecondLoggerServiceImpl
 ```
 
 与 Java SPI 实现类配置不同，Dubbo SPI 是通过键值对的方式进行配置，这样就可以按需加载指定的实现类。另外，在使用 Dubbo SPI 时，需要在 Animal接口上标注 @SPI 注解，Cat与Dog类不变。下面来演示 Dubbo SPI 的用法：
 
 ```java
 @SPI
-public interface Animal {
- void run();
+public interface Logger {
+  public void info(String msg);
+
+  public void debug(String msg);
 }
+```
+
+在对应的服务实现类上：
+
+```java
+public class FirstLoggerServiceImpl implements Logger {
+  @Override
+  public void info(String s) {
+    System.out.println("FirstLoggerServiceImpl info 打印日志：" + s);
+  }
+
+  @Override
+  public void debug(String s) {
+    System.out.println("FirstLoggerServiceImpl debug 打印日志：" + s);
+  }
+}
+
+public class SecondLoggerServiceImpl implements Logger {
+  @Override
+  public void info(String s) {
+    System.out.println("SecondLoggerServiceImpl info 打印日志：" + s);
+  }
+
+  @Override
+  public void debug(String s) {
+    System.out.println("SecondLoggerServiceImpl debug 打印日志：" + s);
+  }
+}
+
+
 ```
 
 编写测试方法：
 
 ```java
-public void testDubboSPI(){
-   System.out.println("======dubbo SPI======");
-   ExtensionLoader<Animal> extensionLoader =
-         ExtensionLoader.getExtensionLoader(Animal.class);
-   Animal cat = extensionLoader.getExtension("cat");
-   cat.run();
-   Animal dog = extensionLoader.getExtension("dog");
-   dog.run();
+public class TestDubboSpi {
+  public static void main(String[] args) {
+    System.out.println("======dubbo SPI======");
+    ExtensionLoader<Logger> extensionLoader = ExtensionLoader.getExtensionLoader(Logger.class);
+    Logger FirstLoggerServiceImpl = extensionLoader.getExtension("First");
+    FirstLoggerServiceImpl.info("TestDubboSpi");
+    Logger SecondLoggerServiceImpl = extensionLoader.getExtension("Second");
+    SecondLoggerServiceImpl.info("TestDubboSpi");
+  }
 }
 ```
 
@@ -370,13 +403,13 @@ public void testDubboSPI(){
 
 ```log
 ======dubbo SPI======
-小猫步走起来～
-小狗飞奔～
+FirstLoggerServiceImpl info 打印日志：TestDubboSpi
+SecondLoggerServiceImpl info 打印日志：TestDubboSpi
 ```
 
 ### dubbo的SPI源码分析
 
-Dubbo通过ExtensionLoader.getExtensionLoader(Animal.class).getExtension("cat")方法获取实例。该方法中，会先到缓存列表中获取实例，若未命中，则创建实例：
+Dubbo通过ExtensionLoader.getExtensionLoader(Animal.class).getExtension("First")方法获取实例。该方法中，会先到缓存列表中获取实例，若未命中，则创建实例：
 
 ```java
 public T getExtension(String name) {
@@ -463,9 +496,9 @@ private Map<String, Class<?>> loadExtensionClasses() {
     if(defaultAnnotation != null) {
         String extensionClasses = defaultAnnotation.value();
         if(extensionClasses != null && (extensionClasses = extensionClasses.trim()).length() > 0) {
-	  // 对 SPI 注解内容进行切分
+      // 对 SPI 注解内容进行切分
             String[] names = NAME_SEPARATOR.split(extensionClasses);
-	  // 检测 SPI 注解内容是否合法，不合法则抛出异常
+      // 检测 SPI 注解内容是否合法，不合法则抛出异常
             if(names.length > 1) {
                 throw new IllegalStateException("more than 1 default extension name on extension " + this.type.getName() + ": " + Arrays.toString(names));
             }
@@ -490,13 +523,21 @@ private Map<String, Class<?>> loadExtensionClasses() {
 
 如果想使用Dubbo SPI，接口必须打上@SPI注解。相比之下，Dubbo SPI有以下几点改进：
 
-1. 配置文件改为键值对形式，可以获取任一实现类，而无需加载所有实现类，节约资源；
+1. 按需加载。Dubbo 的扩展能力不会一次性实例化所有实现，而是对需要加载的扩展类实例化，减少资源浪费。
 
-2. 增加了缓存来存储实例，提高了读取的性能；
+2. 配置灵活。键值对方式配置拓展点实现类。
 
-除此之外，dubbo SPI还提供了默认值的指定方式（例如可通过@SPI（“cat”）方式指定Animal的默认实现类为Cat）。同时dubbo SPI还提供了对IOC和AOP等高级功能的支持，以实现更多类型的扩展。
+3. 增加了缓存来存储实例，提高了读取的性能。
 
+除此之外，dubbo SPI还提供了默认值的指定方式（例如可通过@SPI（“First”）方式指定Logger的默认实现类为FirstLoggerServiceImpl）。同时dubbo SPI还提供了对IOC和AOP等高级功能的支持，以实现更多类型的扩展。
 
+Dubbo的加载器的设计思路是：
+
+1. 一个扩展点类一个加载器对象，加载器对象获取指定名称实现类时，先读取缓存中的结果；
+
+2. 缓存中没有对应实现类，再通过读取META-INF/dubbo下的配置文件尝试加载实现类
+
+3. 进行扩展实例属性的 IOC 注入以及实例化扩展的包装类，实现 AOP 特性
 
 ## 什么是Dubbo的优雅停机，怎么实现的？
 

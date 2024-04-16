@@ -175,3 +175,182 @@ Full thread dump Java HotSpot(TM) 64-Bit Server VM (25.381-b09 mixed mode):
 在Java中有两类线程：User Thread(用户线程)、Daemon Thread(守护线程) 。用户线程一般用于执行用户级任务，而守护线程也就是“后台线程”，一般用来执行后台调度及支持性任务，守护线程最典型的应用就是GC(垃圾回收器)。
 
 这两种线程其实是没有什么区别的，唯一的区别就是Java虚拟机在所有<用户线程>都结束后就会退出，而不会等<守护线程>执行完。也即Daemon线程会被JVM强制退出，不能在编写程序时依靠Daemon中的finally代码块来关闭资源或者清理资源。
+
+## 多线程间通信有几种方式？
+
+### 管道通信
+
+多线程间可以通过一个输入管道PipedWriter和一个输出管道PipedReader相连接进行通信。主动发起通信的一方向输出管道写入内容，接受通信的一方监听输入管道是否有内容即可。这种编程范式通过一个共享管道内存的方式实现了多个线程间通信的机制。
+
+管道输入/输出流主要包括了如下4种具体实现：PipedOutputStream、PipedInputStream、
+
+PipedReader和PipedWriter，前两种面向字节，而后两种面向字符。
+
+下面有一个示例，例子中主线程负责一直读取系统输入的字符，将字符输出到输出管道中。打印线程负责监听输入管道是否有内容，有内容则打印出一行内容出来：
+
+```java
+public class TestPipeCommunication {
+  public static void main(String[] args) throws IOException {
+    System.out.println("main-thread start");
+    PipedReader pipedReader = new PipedReader();
+    PipedWriter pipedWriter = new PipedWriter();
+    pipedWriter.connect(pipedReader);
+    Thread thread = new Thread(new PrintRunnable(pipedReader), "print-thread");
+    thread.start();
+    try {
+      Scanner sc = new Scanner(System.in);
+      while (true) {
+        String s = sc.nextLine();
+        pipedWriter.write(s);
+        pipedWriter.flush();
+      }
+    } finally {
+      System.out.println("main-thread end");
+      pipedWriter.close();
+    }
+  }
+
+  static class PrintRunnable implements Runnable {
+    PipedReader pipedReader;
+
+    public PrintRunnable(PipedReader pipedReader) {
+      this.pipedReader = pipedReader;
+    }
+
+    @Override
+    public void run() {
+      System.out.println(Thread.currentThread().getName() + " start");
+      int total = 0;
+
+      try {
+        while (true) {
+          char[] buf = new char[1024];
+          int length;
+          StringBuilder sb = new StringBuilder();
+          do {
+            length = pipedReader.read(buf);
+            sb = new StringBuilder();
+            total += length;
+            sb.append(buf);
+            if (sb.indexOf(".") > 0) {
+              break;
+            }
+          } while (pipedReader.ready());
+
+          if (!"".equals(sb.toString())) {
+            System.out.println("print-thread msg:" + sb);
+          }
+        }
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      } finally {
+        try {
+          System.out.println("receive msg total length:" + total);
+          System.out.println("print-thread end");
+          pipedReader.close();
+        } catch (IOException e) {
+          throw new RuntimeException(e);
+        }
+      }
+    }
+  }
+}
+```
+
+### Thread.join()的使用
+
+如果一个线程A执行了thread.join()语句，其含义是：当前线程A等待thread线程终止之后才从thread.join()返回。线程Thread除了提供join()方法之外，还提供了join(long millis)和join(long millis,int nanos)两个具备超时特性的方法。这两个超时方法表示，如果线程thread在给定的超时时间里没有终止，那么将会从该超时方法中返回。
+
+下面示例创建了10个线程，编号0~9，每个线程调用前一个线程的join()方法，也就是线程0结束了，线程1才能从join()方法中返回，而线程0需要等待main线程结束。
+
+```java
+public class TestJoin {
+  public static void main(String[] args) throws InterruptedException {
+    Thread pre = Thread.currentThread();
+    for (int j = 0; j < 10; j++) {
+      Thread thread = new Thread(new OrderThread(pre), String.valueOf(j) + "-thread");
+      thread.start();
+      pre = thread;
+    }
+    TimeUnit.SECONDS.sleep(5);
+    System.out.println(Thread.currentThread().getName() + " Terminated!");
+  }
+
+  static class OrderThread implements Runnable {
+    Thread previous;
+
+    public OrderThread(Thread thread) {
+      this.previous = thread;
+    }
+
+    @Override
+    public void run() {
+      try {
+        previous.join();
+      } catch (Exception e) {
+        System.out.println(e);
+      } finally {
+        System.out.println(Thread.currentThread().getName() + " Terminated!");
+      }
+    }
+  }
+}
+```
+
+程序输出如下：
+
+```log
+main Terminated!
+0-thread Terminated!
+1-thread Terminated!
+2-thread Terminated!
+3-thread Terminated!
+4-thread Terminated!
+5-thread Terminated!
+6-thread Terminated!
+7-thread Terminated!
+8-thread Terminated!
+9-thread Terminated!
+```
+
+从上述输出可以看到，每个线程终止的前提是前驱线程的终止，每个线程等待前驱线程终止后，才从join()方法返回，join的底层实现涉及了等待/通知机制（等待前驱线程结束，接收前驱线程结束通知）。
+
+通过查看Thread.join()方法，可以知道这里使用了wait/notify机制。
+
+```java
+public final synchronized void join(final long millis) throws InterruptedException {
+    while (isAlive()) {
+        wait(0);
+    }
+}
+```
+
+当前驱线程终止时，会调用notifyAll()方法，会通知所有等待在该线程对象上的线程。可以看到join()方法的逻辑结构与wait/notify经典范式一致，即加锁、循环
+
+和处理逻辑3个步骤。
+
+### ThreadLocal的使用
+
+ThreadLocal，即线程变量，是一个以ThreadLocal对象为键、任意对象为值的存储结构。这个结构被附带在线程上，也就是说一个线程可以根据一个ThreadLocal对象查询到绑定在这个线程上的一个值。可以通过set(T)方法来设置一个值，在当前线程下再通过get()方法获取到原先设置的值。
+
+下面示例演示了在一个线程中设置起始执行时间，最后输出执行时间的功能。这个方式可以为线程提供存储和查询变量的能力，实际场景中经常使用到，例如记录请求执行时间。
+
+```java
+public class TestThreadLocal {
+  public static final ThreadLocal<Long> threadLocal = new ThreadLocal<>();
+
+  static void start() {
+    threadLocal.set(System.currentTimeMillis());
+  }
+
+  static Long end() {
+    return System.currentTimeMillis() - threadLocal.get();
+  }
+
+  public static void main(String[] args) throws InterruptedException {
+    TestThreadLocal.start();
+    TimeUnit.SECONDS.sleep(1);
+    System.out.println("cost: " + TestThreadLocal.end() + "ms");
+  }
+}
+```

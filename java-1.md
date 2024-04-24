@@ -6,6 +6,12 @@
 
 ### java是编译与解释并存的语言
 
+### java编译与运行
+
+当我们执行javac TestPipeCommunication.java时，javac会从当前目录找到java文件，编译成class字节码文件
+
+当我们执行java org.example.javaexample.multithread.TestPipeCommunication时，java会从当前目录开始寻找，根据包路径寻找文件夹路径，找到对应class文件启动jvm运行主函数。
+
 ### java和c++区别
 
 C++是编译型语言（首先将源代码编译生成机器语言，再由机器运行机器码），执行速度快、效率高；依赖编译器、跨平台性差些。 

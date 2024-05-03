@@ -1226,14 +1226,14 @@ W-TinyLFU由多个部分组合而成，包括窗口缓存、过滤器和主缓�
 
 ```java
 public String query(String key){
-	String localResult = localCache.get(key);
-	if(localResult == null){
-  	String remoteResult = remoteCache.get(key);
-  	if(remoteResult != null){
-    	localCache.put(remoteResult);
+    String localResult = localCache.get(key);
+    if(localResult == null){
+      String remoteResult = remoteCache.get(key);
+      if(remoteResult != null){
+        localCache.put(remoteResult);
     }
   }
-	return localResult;
+    return localResult;
 }
 ```
 
@@ -1286,14 +1286,80 @@ Cache<String, String> cache = Caffeine.newBuilder()
 Cache<String, String> cache = Caffeine.newBuilder()
                 .refreshAfterWrite(5, TimeUnit.SECONDS) // 设置缓存项写入后的自动刷新时间为5秒
                 .build(new CacheLoader<String, String>() { //定义一个CacheLoader，实现load方法。
-                 	@Override
-                 	public ListenableFuture<String> reload(String key, String oldValue) throws Exception {
+                     @Override
+                     public ListenableFuture<String> reload(String key, String oldValue) throws Exception {
                      return remoteCache.get(key);
-                	}
+                    }
                });
 ```
 
 以上，会在达到缓存刷新的时间后，Caffiene会自动调用load方法进行数据读取并更新。
+
+### 怎么提升缓存性能？
+
+#### CPU缓存结构
+
+首先介绍一下CPU的缓存结构：CPU缓存分为L1、L2、L3三级，越靠近CPU的，容量越小，延迟越低。当三级缓存中拿不到数据时，CPU会去主内存加载数据。当主内存更新数据时，CPU也会将L1、L2、L3缓存更新。
+
+每一级缓存的执行时间有所不同，L3需要15ns（约40-45 cycles），L2需要3ns（约10 cycles），L1需要1ns（约3-4 cycles），主内存需要60-80ns。
+
+![](./pic/java/cpu缓存结构.png)
+
+#### CPU缓存行
+
+CPU存在一个缓存行的机制，即CPU缓存由缓存行cache line组成，每个cache line由64字节组成，能容纳8个long值。在CPU从主内存获取数据时，会以cache line为单位进行读取，于是相邻的数据也被加载进CPU缓存中。这种机制很容易联想到，数组的顺序遍历、相邻数据的计算是非常高效的。
+
+![](./pic/java/CPU读取内存.png)
+
+#### 缓存行伪共享问题
+
+CPU缓存本身需要解决一致性问题，它通过MESI协议来保证。MESI协议要求，每个CPU核心读取到缓存行之后，当需要更新缓存行数据之后，需要通知持有相同缓存行的CPU核心去同步一下数据。
+
+伪共享问题来源于高并发时，两个线程读取了同一个缓存行到各自的三级缓存中，每个线程需要修改该缓存行中的不同数据。由于MESI协议的存在，CPU每次更新缓存行后都需要通知持有相同缓存行的其他CPU更新。也即两个线程虽然没有修改相同的数据，但是在高并发场景下，会出现各个CPU需要频繁更新自己的缓存行中的数据，这样会造成大量的CPU性能消耗。
+
+![](./pic/java/伪共享问题.png)
+
+那最佳情况就是，需要频繁更新的缓存数据单独放在一个缓存行中，这样只有真正需要更新缓存的CPU核心会持有这个相应的缓存行，也就降低了这个缓存行的频繁同步场景的发生。
+
+##### Padding填充数据方案
+
+通过填充数据，让频繁更新的数据落在不同的缓存行中：
+
+```java
+Padding {
+    // 缓存行1
+    long p1, p2, p3, p4, p5, p6, p7;
+    volatile long p8 = 0L;
+    // 缓存行2
+    long p9, p10, p11, p12, p13, p14, p15;
+    volatile long p16 =0L;
+  }
+```
+
+案例：jctools
+
+##### Contended注解
+
+委托JVM填充cache line：
+
+```java
+  @jdk.internal.vm.annotation.Contended
+  public static class JVMPadding {
+    volatile long value;
+
+    JVMPadding(long c) {
+      value = c;
+    }
+  }
+```
+
+案例：JDK源码中的LongAdder中的Cell、ConcurrentHashMap中的CounterCell。
+
+##### 无锁并发
+
+无锁并发可以从本质上解决伪共享的问题，他无需填充cache line，并且执行效率最高。实现无锁并发的关键在于CAS(compare and swap)操作。CAS是一种乐观锁设计，它通过比较和替换实现无锁操作。具体来说，每一个更新数据线程在操作数据前，都需要比较一次当前数据是否和自身修改前数据相同。如果其他线程修改了数据导致和自身修改前数据不相同，则会重试，直至操作成功。
+
+案例：disruptor
 
 ## 相关阅读
 

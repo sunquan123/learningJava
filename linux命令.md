@@ -236,3 +236,44 @@ Flags  任务标志
 敲top后，输入shift+m，进程列表将根据内存占用排序。
 
 top -p xxxxxx，将查询某个进程xxxxxx的信息。
+
+
+
+
+
+## 14、在Centos中修改默认JDK版本
+
+```shell
+[root@localhost jdk21]# java -version
+java version "17.0.11" 2024-04-16 LTS
+Java(TM) SE Runtime Environment (build 17.0.11+7-LTS-207)
+Java HotSpot(TM) 64-Bit Server VM (build 17.0.11+7-LTS-207, mixed mode, sharing)
+[root@localhost jdk21]# alternatives --config java
+
+共有 4 个提供“java”的程序。
+
+  选项    命令
+-----------------------------------------------
+   1           java-1.7.0-openjdk.x86_64 (/usr/lib/jvm/java-1.7.0-openjdk-1.7.0.261-2.6.22.2.el7_8.x86_64/jre/bin/java)
+   2           java-1.8.0-openjdk.x86_64 (/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.402.b06-1.el7_9.x86_64/jre/bin/java)
+*+ 3           /usr/lib/jvm/jdk-17-oracle-x64/bin/java
+   4           /usr/lib/jvm/java-21-amazon-corretto/bin/java
+
+按 Enter 保留当前选项[+]，或者键入选项编号：
+[root@localhost jdk21]# alternatives --config java
+
+共有 4 个提供“java”的程序。
+
+  选项    命令
+-----------------------------------------------
+   1           java-1.7.0-openjdk.x86_64 (/usr/lib/jvm/java-1.7.0-openjdk-1.7.0.261-2.6.22.2.el7_8.x86_64/jre/bin/java)
+   2           java-1.8.0-openjdk.x86_64 (/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.402.b06-1.el7_9.x86_64/jre/bin/java)
+*+ 3           /usr/lib/jvm/jdk-17-oracle-x64/bin/java
+   4           /usr/lib/jvm/java-21-amazon-corretto/bin/java
+
+按 Enter 保留当前选项[+]，或者键入选项编号：4
+[root@localhost jdk21]# java -version
+openjdk version "21.0.3" 2024-04-16 LTS
+OpenJDK Runtime Environment Corretto-21.0.3.9.1 (build 21.0.3+9-LTS)
+OpenJDK 64-Bit Server VM Corretto-21.0.3.9.1 (build 21.0.3+9-LTS, mixed mode, sharing)
+```
